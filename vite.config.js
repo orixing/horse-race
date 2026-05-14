@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 
 export default defineConfig({
+  base: "/horse-race/",
   server: {
     port: 5180,
     open: true,
