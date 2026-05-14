@@ -49,6 +49,13 @@
     #main-menu .menu-btn:active {
       transform: translateY(0) scale(0.98);
     }
+    #main-menu .race-btn {
+      background: linear-gradient(135deg, #33aa66, #2288aa);
+      box-shadow: 0 4px 15px rgba(50,150,100,0.4);
+    }
+    #main-menu .race-btn:hover {
+      box-shadow: 0 6px 25px rgba(50,150,100,0.6);
+    }
     #main-menu .menu-note {
       margin-top: 20px;
       font-size: 0.85rem; color: rgba(255,255,255,0.5);
@@ -126,7 +133,7 @@
     #horse-stats .save-btn:hover { filter: brightness(1.1); }
     #horse-stats .saved-count {
       display: block; text-align: center;
-      color: #888; font-size: 10px; margin-top: 4px;
+      color: #888; font-size: 10px; margin-top: 4px; margin-bottom: 4px;
     }
 
     #debug-canvas {
@@ -213,6 +220,9 @@
     <div class="game-intro">马匹会自己移动，滑动控制驾驭马匹前进。</div>
     <button class="menu-btn" id="btn-practice">驯服野马</button>
     <div class="menu-note">尝试捕获新的随机马匹</div>
+    <div style="height:20px"></div>
+    <button class="menu-btn race-btn" id="btn-race">开始赛马</button>
+    <div class="menu-note" id="race-note">使用捕获的马匹参赛</div>
   </div>
 
   <!-- 游戏 -->
@@ -231,7 +241,8 @@
 
   <div id="finish-overlay">
     <div class="title">驯服成功!</div>
-    <div class="finish-choices">
+    <!-- 驯服模式的按钮 -->
+    <div class="finish-choices" id="tame-choices">
       <button class="finish-btn keep-btn" id="btn-keep">
         <span class="btn-icon">🐴</span>
         <span class="btn-label">保留此马</span>
@@ -241,6 +252,14 @@
         <span class="btn-icon">🌿</span>
         <span class="btn-label">放生此马</span>
         <span class="btn-desc">试试别的马</span>
+      </button>
+    </div>
+    <!-- 赛马模式的按钮 -->
+    <div class="finish-choices" id="race-choices" style="display:none">
+      <button class="finish-btn" id="btn-back-menu">
+        <span class="btn-icon">🏠</span>
+        <span class="btn-label">返回主界面</span>
+        <span class="btn-desc">再来一局</span>
       </button>
     </div>
   </div>

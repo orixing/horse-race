@@ -7,12 +7,16 @@ import RAPIER from "@dimforge/rapier2d-compat";
 import * as THREE from "three";
 import GUI from "lil-gui";
 import { RagdollHorse, randomGenome, defaultGenome, fastGenome } from "./RagdollHorse.js";
+import horsePool from "./horsePool.json";
+
+// ── 开发模式/发布模式 ──
+const DEV_MODE = true; // true=开发模式（完全随机+保存按钮），false=发布模式（从池子抽马）
 
 // ── 赛道常量（与原版一致）──
 const LANE_WIDTH = 2.5;
-const LANE_COUNT = 1;
+let LANE_COUNT = 1;
 const START_X = -8;
-const FINISH_X = 20;
+let FINISH_X = 20;
 const TRACK_LENGTH = 300;
 const GROUND_Y = 0;
 const FINISH_DISPLAY_TIME = 3.0;
@@ -25,13 +29,30 @@ let playerHorse = null;
 let debugCtx;
 let raceFinished = false;
 let finishTimer = 0;
-let inMenu = true;  // 是否在主界面
+let inMenu = true;
+let gameMode = null; // "tame" = 驯服野马, "race" = 赛马
+let trackObjects = []; // 赛道场景对象（用于清理重建）
 const cameraConfig = { viewAngle: 20, viewDist: 12 };
 
-// ── 马匹配置（先用1匹调试）──
-const HORSE_CONFIGS = [
-  { name: "COLOSSULUS", color: 0xbb7733, number: 1, numberColor: 0xff33ff, isPlayer: true },
+// ── 马匹配置 ──
+const TAME_CONFIGS = [
+  { lane: 0, isPlayer: true },
 ];
+const RACE_CONFIGS = [
+  { lane: 0 },
+  { lane: 1 },
+  { lane: 2 },
+  { lane: 3 },
+  { lane: 4, isPlayer: true }, // 玩家在最外侧
+];
+
+/**
+ * 生成马匹数据：当前所有模式都走纯随机
+ * TODO: 发布模式可改为从 horsePool.json 抽马
+ */
+function generateHorseData() {
+  return null; // 纯随机
+}
 
 const config = {
   paused: false,
@@ -45,39 +66,36 @@ async function init() {
   info.textContent = "正在加载...";
 
   await RAPIER.init();
-
-  initThreeJS();
-  createRacetrack();
-  createFinishLine();
-  createHorses();
-
-  debugCtx = document.getElementById("debug-canvas").getContext("2d");
-  setupGUI();
-
-  timer = new THREE.Timer();
   info.textContent = "";
 
-  // 主界面 → 练习模式按钮：隐藏菜单，进入等待点击状态
+  // 驯服野马按钮
   document.getElementById("btn-practice").addEventListener("click", (e) => {
-    e.stopPropagation(); // 防止冒泡触发开始比赛
-    document.getElementById("main-menu").classList.add("hidden");
-    inMenu = false;
-    info.textContent = "点击屏幕开始";
+    e.stopPropagation();
+    startGameMode("tame");
+  });
+
+  // 赛马按钮
+  document.getElementById("btn-race").addEventListener("click", (e) => {
+    e.stopPropagation();
+    const saved = localStorage.getItem("savedHorse");
+    if (!saved) {
+      alert("请先去捕捉你的马匹！");
+      return;
+    }
+    startGameMode("race");
   });
 
   window.addEventListener("keydown", (e) => {
     if (e.code === "Space") { e.preventDefault(); resetRace(); }
   });
 
-  // 保留此马
+  // 保留此马（最多存1只，覆盖旧的）
   document.getElementById("btn-keep").addEventListener("click", (e) => {
     e.stopPropagation();
     if (playerHorse) {
       const data = playerHorse.exportData();
-      data.name = playerHorse.name + "_" + new Date().toLocaleTimeString();
-      const saved = JSON.parse(localStorage.getItem("savedHorses") || "[]");
-      saved.push(data);
-      localStorage.setItem("savedHorses", JSON.stringify(saved));
+      data.name = playerHorse.name;
+      localStorage.setItem("savedHorse", JSON.stringify(data));
     }
     resetRace();
   });
@@ -97,10 +115,139 @@ async function init() {
     }
   });
 
+  // 赛马模式返回主界面按钮
+  document.getElementById("btn-back-menu").addEventListener("click", (e) => {
+    e.stopPropagation();
+    resetRace();
+  });
+
   // 滑动施力
   setupSwipe(document.getElementById("canvas3d"));
 
+  // 初始化场景（只初始化渲染器和灯光，赛道等模式切换时创建）
+  initThreeJS();
+  debugCtx = document.getElementById("debug-canvas").getContext("2d");
+  timer = new THREE.Timer();
+  setupGUI();
+
   requestAnimationFrame(animate);
+}
+
+// ════════════════════════════════════════════════════════════
+//  游戏模式切换
+// ════════════════════════════════════════════════════════════
+function startGameMode(mode) {
+  gameMode = mode;
+
+  // 清理旧马匹和赛道
+  clearAllHorses();
+  clearTrack();
+
+  // 模式设置
+  if (mode === "race") {
+    LANE_COUNT = 5;
+    FINISH_X = 30;
+  } else {
+    LANE_COUNT = 1;
+    FINISH_X = 20;
+  }
+
+  // 重建赛道
+  createRacetrack();
+  createFinishLine();
+
+  // 创建马匹
+  const configs = mode === "race" ? RACE_CONFIGS : TAME_CONFIGS;
+  const startZ = -(configs.length - 1) * LANE_WIDTH / 2;
+
+  for (let i = 0; i < configs.length; i++) {
+    const cfg = configs[i];
+
+    const horseWorld = new RAPIER.World({ x: 0.0, y: -9.81 });
+    const groundBody = horseWorld.createRigidBody(
+      RAPIER.RigidBodyDesc.fixed().setTranslation(0, GROUND_Y - 0.5)
+    );
+    horseWorld.createCollider(
+      RAPIER.ColliderDesc.cuboid(500, 0.5).setFriction(0.8).setRestitution(0.02),
+      groundBody
+    );
+    worlds.push(horseWorld);
+
+    let genome, poolData;
+    // 赛马模式：玩家马用保存的数据，AI马随机
+    if (mode === "race" && cfg.isPlayer) {
+      const saved = JSON.parse(localStorage.getItem("savedHorse"));
+      if (saved) {
+        genome = saved.genome || randomGenome();
+        poolData = saved;
+      } else {
+        genome = randomGenome();
+      }
+    } else {
+      poolData = generateHorseData();
+      genome = poolData ? poolData.genome : randomGenome();
+    }
+
+    const horse = new RagdollHorse(horseWorld, genome, START_X);
+    if (poolData) horse.importData(poolData);
+    horse.horseWorld = horseWorld;
+    horse.lane = cfg.lane;
+    horse.isPlayer = cfg.isPlayer || false;
+    horse.isAI = !horse.isPlayer;
+    horse.laneZ = startZ + i * LANE_WIDTH;
+
+    horse.meshes = build3DHorse(horse);
+    horses.push(horse);
+    if (horse.isPlayer) playerHorse = horse;
+  }
+
+  // UI 切换
+  document.getElementById("main-menu").classList.add("hidden");
+  inMenu = false;
+  raceFinished = false;
+  info.textContent = "点击屏幕开始";
+
+  // 赛马模式：隐藏调试面板和马匹信息
+  if (mode === "race") {
+    config.showDebug = false;
+    document.getElementById("horse-stats").style.display = "none";
+    document.getElementById("rankings").style.display = "block";
+  } else {
+    config.showDebug = true;
+    document.getElementById("horse-stats").style.display = "";
+    document.getElementById("rankings").style.display = "none";
+  }
+
+  // 重置相机位置
+  camera.position.x = START_X;
+}
+
+function clearAllHorses() {
+  for (const horse of horses) {
+    // 删除3D网格
+    if (horse.meshes) {
+      for (const key of Object.keys(horse.meshes)) {
+        if (key === "tailSegs") { horse.meshes.tailSegs.forEach(s => scene.remove(s)); }
+        else if (horse.meshes[key]?.removeFromParent) {
+          horse.meshes[key].removeFromParent();
+          scene.remove(horse.meshes[key]);
+        }
+      }
+    }
+    // 删除物理刚体
+    if (horse.horseWorld) {
+      const allBodies = [
+        horse.bodies.body, horse.bodies.hindLeg, horse.bodies.foreLeg,
+        horse.bodies.neck, horse.bodies.head, ...horse.bodies.tailSegs,
+      ];
+      for (const b of allBodies) {
+        if (b) horse.horseWorld.removeRigidBody(b);
+      }
+    }
+  }
+  horses = [];
+  worlds = [];
+  playerHorse = null;
 }
 
 // ════════════════════════════════════════════════════════════
@@ -196,6 +343,13 @@ function updateCameraAngle() {
 // ════════════════════════════════════════════════════════════
 //  赛道（完全复刻原版）
 // ════════════════════════════════════════════════════════════
+function addTrackObj(obj) { trackObjects.push(obj); scene.add(obj); }
+
+function clearTrack() {
+  for (const obj of trackObjects) scene.remove(obj);
+  trackObjects = [];
+}
+
 function createRacetrack() {
   const trackWidth = LANE_COUNT * LANE_WIDTH + 2;
   const halfZ = trackWidth / 2;
@@ -207,7 +361,7 @@ function createRacetrack() {
   );
   grass.rotation.x = -Math.PI / 2;
   grass.position.set(TRACK_LENGTH / 2 - 20, -0.01, 0);
-  scene.add(grass);
+  addTrackObj(grass);
 
   // 泥土赛道
   const track = new THREE.Mesh(
@@ -216,7 +370,7 @@ function createRacetrack() {
   );
   track.rotation.x = -Math.PI / 2;
   track.position.set(TRACK_LENGTH / 2 - 20, 0, 0);
-  scene.add(track);
+  addTrackObj(track);
 
   // 车道分隔线
   const startZ = -(LANE_COUNT - 1) * LANE_WIDTH / 2;
@@ -228,7 +382,7 @@ function createRacetrack() {
     );
     line.rotation.x = -Math.PI / 2;
     line.position.set(TRACK_LENGTH / 2 - 20, 0.01, z);
-    scene.add(line);
+    addTrackObj(line);
   }
 
   // 围栏
@@ -237,13 +391,13 @@ function createRacetrack() {
     for (const z of [-halfZ - 0.3, halfZ + 0.3]) {
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.2, 0.1), postMat);
       post.position.set(x, 0.6, z);
-      scene.add(post);
+      addTrackObj(post);
       const rail = new THREE.Mesh(new THREE.BoxGeometry(4, 0.06, 0.06), postMat);
       rail.position.set(x + 2, 0.9, z);
-      scene.add(rail);
+      addTrackObj(rail);
       const rail2 = new THREE.Mesh(new THREE.BoxGeometry(4, 0.06, 0.06), postMat);
       rail2.position.set(x + 2, 0.5, z);
-      scene.add(rail2);
+      addTrackObj(rail2);
     }
   }
 
@@ -253,14 +407,14 @@ function createRacetrack() {
     const h = 2 + Math.random() * 2;
     const stand = new THREE.Mesh(new THREE.BoxGeometry(1.8, h, 2), standMat);
     stand.position.set(x, h / 2, -halfZ - 4);
-    scene.add(stand);
+    addTrackObj(stand);
   }
   const roof = new THREE.Mesh(
     new THREE.BoxGeometry(24, 0.3, 3),
     new THREE.MeshStandardMaterial({ color: 0xdd4444 })
   );
   roof.position.set(0, 5, -halfZ - 4);
-  scene.add(roof);
+  addTrackObj(roof);
 
   // 起跑线
   const startLine = new THREE.Mesh(
@@ -269,7 +423,7 @@ function createRacetrack() {
   );
   startLine.rotation.x = -Math.PI / 2;
   startLine.position.set(START_X, 0.02, 0);
-  scene.add(startLine);
+  addTrackObj(startLine);
 }
 
 // ════════════════════════════════════════════════════════════
@@ -292,7 +446,7 @@ function createFinishLine() {
       const tile = new THREE.Mesh(new THREE.PlaneGeometry(checkerSize, checkerSize), mat);
       tile.rotation.x = -Math.PI / 2;
       tile.position.set(FINISH_X + c * checkerSize, 0.02, -halfZ + r * checkerSize + checkerSize / 2);
-      scene.add(tile);
+      addTrackObj(tile);
     }
   }
 
@@ -300,16 +454,16 @@ function createFinishLine() {
   const archMat = new THREE.MeshStandardMaterial({ color: 0xcc0000 });
   const pole1 = new THREE.Mesh(new THREE.BoxGeometry(0.15, 3, 0.15), archMat);
   pole1.position.set(FINISH_X + 0.5, 1.5, -halfZ - 0.3);
-  scene.add(pole1);
+  addTrackObj(pole1);
   const pole2 = new THREE.Mesh(new THREE.BoxGeometry(0.15, 3, 0.15), archMat);
   pole2.position.set(FINISH_X + 0.5, 1.5, halfZ + 0.3);
-  scene.add(pole2);
+  addTrackObj(pole2);
   const bar = new THREE.Mesh(
     new THREE.BoxGeometry(0.15, 0.15, trackWidth + 1),
     archMat
   );
   bar.position.set(FINISH_X + 0.5, 3, 0);
-  scene.add(bar);
+  addTrackObj(bar);
 
   // FINISH 文字
   const cv = document.createElement("canvas");
@@ -326,66 +480,87 @@ function createFinishLine() {
     new THREE.MeshBasicMaterial({ map: tex, transparent: true })
   );
   textMesh.position.set(FINISH_X + 0.5, 3.3, 0);
-  scene.add(textMesh);
+  addTrackObj(textMesh);
 }
 
 // ════════════════════════════════════════════════════════════
 //  马匹创建（每匹马独立物理世界）
 // ════════════════════════════════════════════════════════════
-function createHorses() {
-  const startZ = -(LANE_COUNT - 1) * LANE_WIDTH / 2;
-
-  for (let i = 0; i < LANE_COUNT; i++) {
-    const cfg = HORSE_CONFIGS[i];
-
-    // 每匹马独立物理世界
-    const horseWorld = new RAPIER.World({ x: 0.0, y: -9.81 });
-    const groundBody = horseWorld.createRigidBody(
-      RAPIER.RigidBodyDesc.fixed().setTranslation(0, GROUND_Y - 0.5)
-    );
-    horseWorld.createCollider(
-      RAPIER.ColliderDesc.cuboid(500, 0.5).setFriction(0.8).setRestitution(0.02),
-      groundBody
-    );
-    worlds.push(horseWorld);
-
-    const genome = randomGenome();
-    const horse = new RagdollHorse(horseWorld, genome, START_X);
-    horse.horseWorld = horseWorld;
-    horse.name = cfg.name;
-    horse.color = cfg.color;
-    horse.lane = i;
-    horse.isPlayer = cfg.isPlayer || false;
-    horse.laneZ = startZ + i * LANE_WIDTH;
-
-    horse.meshes = build3DHorse(horse);
-    horses.push(horse);
-    if (horse.isPlayer) playerHorse = horse;
-  }
-}
+// createHorses 已被 startGameMode 替代
 
 function build3DHorse(horse) {
   const m = {};
-  const color = horse.color;
-  const mat = new THREE.MeshStandardMaterial({ color });
-  const legMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(color).multiplyScalar(0.75) });
-  const tailMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(color).multiplyScalar(0.45) });
+  const ap = horse.appearance;
 
-  m.body = new THREE.Mesh(new THREE.BoxGeometry(horse.bodyW, horse.bodyH, 0.5), mat);
+  // 材质
+  const bodyColor = ap.bodyColor;
+  const mat = new THREE.MeshStandardMaterial({ color: bodyColor });
+  const hindLegMat = new THREE.MeshStandardMaterial({ color: ap.hindLegColor || ap.legColor });
+  const foreLegMat = new THREE.MeshStandardMaterial({ color: ap.foreLegColor || ap.legColor });
+  const maneMat = new THREE.MeshStandardMaterial({ color: ap.maneColor });
+  const noseMat = new THREE.MeshStandardMaterial({ color: ap.noseColor });
+
+  // 身体（花纹处理）
+  if (ap.pattern === "split") {
+    // 双色分割：身体左右不同色（用两个半宽方块）
+    const halfW = horse.bodyW / 2;
+    const group = new THREE.Group();
+    const left = new THREE.Mesh(new THREE.BoxGeometry(halfW, horse.bodyH, 0.5), mat);
+    left.position.x = -halfW / 2;
+    group.add(left);
+    const right = new THREE.Mesh(new THREE.BoxGeometry(halfW, horse.bodyH, 0.5),
+      new THREE.MeshStandardMaterial({ color: ap.spotColor }));
+    right.position.x = halfW / 2;
+    group.add(right);
+    m.body = group;
+  } else if (ap.pattern === "spots") {
+    // 斑点：主色身体 + 随机小方块斑点
+    const group = new THREE.Group();
+    group.add(new THREE.Mesh(new THREE.BoxGeometry(horse.bodyW, horse.bodyH, 0.5), mat));
+    const spotMat = new THREE.MeshStandardMaterial({ color: ap.spotColor });
+    const spotCount = 3 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < spotCount; i++) {
+      const sz = 0.04 + Math.random() * 0.08;
+      const spot = new THREE.Mesh(new THREE.BoxGeometry(sz, sz, 0.52), spotMat);
+      spot.position.set(
+        (Math.random() - 0.5) * horse.bodyW * 0.8,
+        (Math.random() - 0.5) * horse.bodyH * 0.6,
+        0
+      );
+      group.add(spot);
+    }
+    m.body = group;
+  } else {
+    // 纯色
+    m.body = new THREE.Mesh(new THREE.BoxGeometry(horse.bodyW, horse.bodyH, 0.5), mat);
+  }
   scene.add(m.body);
 
+  // 腿（前后腿各自颜色）
   for (const [name, z] of [["hindLeg", 0.15], ["foreLeg", 0.15], ["hindLegR", -0.15], ["foreLegR", -0.15]]) {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(horse.legW, horse.legLen, horse.legW), legMat);
+    const isHind = name.startsWith("hind");
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(horse.legW, horse.legLen, horse.legW), isHind ? hindLegMat : foreLegMat);
     mesh.position.z = z;
     scene.add(mesh);
     m[name] = mesh;
   }
 
+  // 颈（主色）
   m.neck = new THREE.Mesh(new THREE.BoxGeometry(horse.neckW, horse.neckLen, 0.14), mat);
+  // 鬃毛沿颈部顶部
+  const mane = new THREE.Mesh(new THREE.BoxGeometry(0.02, horse.neckLen * 0.8, 0.08), maneMat);
+  mane.position.set(0, 0, 0.06);
+  m.neck.add(mane);
   scene.add(m.neck);
 
+  // 头（主色）
   m.head = new THREE.Mesh(new THREE.BoxGeometry(horse.headW, horse.headH, 0.16), mat);
   scene.add(m.head);
+
+  // 鼻子
+  const nose = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, 0.12), noseMat);
+  nose.position.set(horse.headW / 2 - 0.01, -0.01, 0);
+  m.head.add(nose);
 
   // 眼睛
   for (const zs of [1, -1]) {
@@ -399,24 +574,25 @@ function build3DHorse(horse) {
   // 耳朵
   for (const z of [0.035, -0.035]) {
     const ear = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.08, 4),
-      new THREE.MeshStandardMaterial({ color: new THREE.Color(color).multiplyScalar(0.9) }));
+      new THREE.MeshStandardMaterial({ color: new THREE.Color(bodyColor).multiplyScalar(0.9) }));
     ear.position.set(-0.02, 0.08, z); m.head.add(ear);
   }
 
-  // 尾巴
+  // 尾巴（鬃毛色）
   m.tailSegs = [];
   for (let i = 0; i < 3; i++) {
-    const seg = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.09, 0.025), tailMat);
+    const seg = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.09, 0.025), maneMat);
     scene.add(seg); m.tailSegs.push(seg);
   }
 
-  // 名牌
+  // 名牌（用马的随机名字）
+  horse.name = ap.name;
   const nameCanvas = document.createElement("canvas");
   nameCanvas.width = 256; nameCanvas.height = 32;
   const nc = nameCanvas.getContext("2d");
   nc.fillStyle = horse.isPlayer ? "#ffdd44" : "#ffffff";
   nc.font = "bold 16px monospace"; nc.textAlign = "center";
-  nc.fillText(horse.name, 128, 22);
+  nc.fillText(ap.name, 128, 22);
   const nameTex = new THREE.CanvasTexture(nameCanvas);
   m.nameLabel = new THREE.Mesh(
     new THREE.PlaneGeometry(1.5, 0.2),
@@ -427,9 +603,7 @@ function build3DHorse(horse) {
 
   // ── 骑手 ──
   const sc = 0.7 + ((horse.genome.size || 100) / 100) * 0.3;
-  const riderColors = [0xff3333, 0x3366ff, 0x33cc33, 0xffcc00, 0xff66cc, 0x9933ff];
-  const riderColor = riderColors[Math.floor(Math.random() * riderColors.length)];
-  const riderMat = new THREE.MeshStandardMaterial({ color: riderColor });
+  const riderMat = new THREE.MeshStandardMaterial({ color: ap.riderColor });
   const skinMat = new THREE.MeshStandardMaterial({ color: 0xffcc99 });
 
   // 骑手身体（挂在body mesh上）
@@ -535,11 +709,35 @@ function syncHorseMeshes(horse) {
 function checkRace(dt) {
   if (raceFinished) return;
 
+  // 赛马模式：更新排名
+  if (gameMode === "race") {
+    const rankings = [...horses].sort((a, b) => b.posX - a.posX);
+    const rankDiv = document.getElementById("rankings");
+    rankDiv.innerHTML = rankings.map((h, i) => {
+      const pos = Math.max(0, h.posX - START_X).toFixed(1);
+      const color = h.isPlayer ? "#ffdd44" : "#fff";
+      const marker = h.isPlayer ? " ⭐" : "";
+      return `<span style="color:${color}">${i + 1}. ${h.name}${marker} <small>${pos}m</small></span>`;
+    }).join("<br>");
+  }
+
   // 终点检测
   if (playerHorse && playerHorse.posX >= FINISH_X) {
     raceFinished = true;
     const overlay = document.getElementById("finish-overlay");
     overlay.classList.add("active");
+
+    if (gameMode === "race") {
+      const rankings = [...horses].sort((a, b) => b.posX - a.posX);
+      const rank = rankings.indexOf(playerHorse) + 1;
+      overlay.querySelector(".title").textContent = rank === 1 ? "冠军!" : `第 ${rank} 名`;
+      document.getElementById("tame-choices").style.display = "none";
+      document.getElementById("race-choices").style.display = "flex";
+    } else {
+      overlay.querySelector(".title").textContent = "驯服成功!";
+      document.getElementById("tame-choices").style.display = "flex";
+      document.getElementById("race-choices").style.display = "none";
+    }
   }
 }
 
@@ -547,17 +745,14 @@ function resetRace() {
   raceFinished = false;
   document.getElementById("finish-overlay").classList.remove("active");
 
-  // 回到主界面
+  // 清理马匹回到主界面
+  clearAllHorses();
   inMenu = true;
+  gameMode = null;
   document.getElementById("main-menu").classList.remove("hidden");
   document.getElementById("rankings").innerHTML = "";
-
-  for (const horse of horses) {
-    horse.reset(START_X);
-    if (!horse.isPlayer) {
-      Object.assign(horse.genome, randomGenome());
-    }
-  }
+  document.getElementById("rankings").style.display = "none";
+  document.getElementById("horse-stats").style.display = "";
 }
 
 function releaseAndNewHorse() {
@@ -568,7 +763,8 @@ function releaseAndNewHorse() {
   // 完整重建每匹马（删除旧的，创建新的）
   for (let i = 0; i < horses.length; i++) {
     const oldHorse = horses[i];
-    const cfg = HORSE_CONFIGS[i];
+    const configs = gameMode === "race" ? RACE_CONFIGS : TAME_CONFIGS;
+    const cfg = configs[i];
 
     // 删除旧3D网格
     const m = oldHorse.meshes;
@@ -586,9 +782,11 @@ function releaseAndNewHorse() {
       if (b) oldHorse.horseWorld.removeRigidBody(b);
     }
 
-    // 创建新马
-    const genome = randomGenome();
+    // 创建新马（开发模式随机，发布模式从池子抽）
+    const poolData = generateHorseData();
+    const genome = poolData ? poolData.genome : randomGenome();
     const newHorse = new RagdollHorse(oldHorse.horseWorld, genome, START_X);
+    if (poolData) newHorse.importData(poolData);
     newHorse.horseWorld = oldHorse.horseWorld;
     newHorse.name = cfg.name;
     newHorse.color = cfg.color;
@@ -772,7 +970,7 @@ function updateHorseStats() {
     return;
   }
 
-  const savedHorses = JSON.parse(localStorage.getItem("savedHorses") || "[]");
+  const savedHorse = localStorage.getItem("savedHorse") ? JSON.parse(localStorage.getItem("savedHorse")) : null;
 
   // 辅助函数
   function bar(label, val, min, max, color = "#4af") {
@@ -882,8 +1080,14 @@ function updateHorseStats() {
     html += `</div>`;
 
     if (h.isPlayer) {
-      html += `<button class="save-btn" onclick="window._saveHorse()">💾 保存此马</button>`;
-      html += `<span class="saved-count">已保存 ${savedHorses.length} 匹</span>`;
+      // 放生按钮（所有模式都有）
+      html += `<button class="save-btn" style="background:linear-gradient(135deg,#66aa66,#448844)" onclick="window._releaseHorse()">🌿 放生此马</button>`;
+      html += `<span class="saved-count" style="margin-bottom:4px">试试别的马</span>`;
+      // 开发模式保存按钮
+      if (DEV_MODE) {
+        html += `<button class="save-btn" onclick="window._saveHorse()">💾 保存到马匹池 [DEV]</button>`;
+        html += `<span class="saved-count">池中 ${horsePool.length} 匹</span>`;
+      }
     }
   }
 
@@ -894,14 +1098,36 @@ function updateHorseStats() {
 }
 
 // 保存马匹到 localStorage
-window._saveHorse = function() {
+// 放生此马（右侧面板按钮）
+window._releaseHorse = function() {
+  if (raceFinished) return; // 已冲线时用冲线面板的按钮
+  releaseAndNewHorse();
+};
+
+// 开发模式：保存到马匹池（直接写入 src/horsePool.json）
+window._saveHorse = async function() {
   if (!playerHorse) return;
   const data = playerHorse.exportData();
-  data.name = playerHorse.name + "_" + new Date().toLocaleTimeString();
-  const saved = JSON.parse(localStorage.getItem("savedHorses") || "[]");
-  saved.push(data);
-  localStorage.setItem("savedHorses", JSON.stringify(saved));
-  alert(`已保存！共 ${saved.length} 匹马`);
+  data.id = Date.now();
+
+  // 追加到内存中的池子
+  horsePool.push(data);
+
+  // 直接写入文件
+  try {
+    const resp = await fetch("/api/save-horse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(horsePool, null, 2),
+    });
+    if (resp.ok) {
+      alert(`已保存到 horsePool.json！池中共 ${horsePool.length} 匹马`);
+    } else {
+      alert("保存失败");
+    }
+  } catch (e) {
+    alert("保存失败: " + e.message);
+  }
 };
 
 init().catch(err => {

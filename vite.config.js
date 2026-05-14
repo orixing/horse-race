@@ -1,4 +1,6 @@
 import { defineConfig } from "vite";
+import fs from "fs";
+import path from "path";
 
 export default defineConfig({
   server: {
@@ -8,4 +10,26 @@ export default defineConfig({
   build: {
     target: "esnext",
   },
+  plugins: [
+    {
+      name: "horse-pool-writer",
+      configureServer(server) {
+        server.middlewares.use("/api/save-horse", (req, res) => {
+          if (req.method === "POST") {
+            let body = "";
+            req.on("data", chunk => body += chunk);
+            req.on("end", () => {
+              const filePath = path.resolve("src/horsePool.json");
+              fs.writeFileSync(filePath, body, "utf-8");
+              res.writeHead(200, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ ok: true }));
+            });
+          } else {
+            res.writeHead(405);
+            res.end();
+          }
+        });
+      },
+    },
+  ],
 });

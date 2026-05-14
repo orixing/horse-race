@@ -21,6 +21,7 @@
  */
 
 import RAPIER from "@dimforge/rapier2d-compat";
+import * as THREE from "three";
 export { RAPIER };
 
 // ══════════════════════════════════════════════════════════
@@ -101,10 +102,85 @@ export function fastGenome() {
   };
 }
 
+// ── 马匹名字池 ──
+const HORSE_NAMES = [
+  "烈焰", "疾风", "雷霆", "黑鬃", "星辰", "暴风", "闪电", "铁蹄",
+  "飞影", "狂奔", "银月", "赤兔", "追风", "破晓", "霜降", "野火",
+  "奔雷", "夜行", "金鞍", "旋风", "天马", "骄阳", "流星", "长风",
+  "白驹", "猎风", "狂沙", "霹雳", "龙驹", "烟雨", "踏雪", "凌云",
+];
+
+// ── 马匹配色方案 ──
+const BODY_COLORS = [
+  0xcc8844, 0x886633, 0xddaa55, 0x553322, 0xbb7733, // 棕色系
+  0x222222, 0x333333, 0x444444,                       // 黑色系
+  0xeeeeee, 0xddddcc, 0xccbbaa,                       // 白/灰色系
+  0xaa4422, 0x993311, 0xbb5533,                       // 红棕色系
+  0xddbb66, 0xccaa44,                                 // 金色系
+];
+
+const LEG_PATTERNS = ["same", "dark", "white_socks", "gradient"];
+const PATTERN_TYPES = ["solid", "split", "spots"];
+
+function randomAppearance() {
+  const bodyColor = BODY_COLORS[Math.floor(Math.random() * BODY_COLORS.length)];
+  const legPattern = LEG_PATTERNS[Math.floor(Math.random() * LEG_PATTERNS.length)];
+  const pattern = PATTERN_TYPES[Math.floor(Math.random() * PATTERN_TYPES.length)];
+  const riderColors = [0xff3333, 0x3366ff, 0x33cc33, 0xffcc00, 0xff66cc, 0x9933ff, 0xff8800, 0x00cccc];
+  const riderColor = riderColors[Math.floor(Math.random() * riderColors.length)];
+  const name = HORSE_NAMES[Math.floor(Math.random() * HORSE_NAMES.length)];
+
+  // 斑点第二色（用于 split 和 spots 花纹）
+  const spot2 = BODY_COLORS[Math.floor(Math.random() * BODY_COLORS.length)];
+
+  // 腿色
+  let legColor, hindLegColor, foreLegColor;
+  switch (legPattern) {
+    case "dark":
+      legColor = new THREE.Color(bodyColor).multiplyScalar(0.5).getHex();
+      break;
+    case "white_socks":
+      legColor = 0xeeeeee;
+      break;
+    case "gradient":
+      legColor = new THREE.Color(bodyColor).multiplyScalar(0.7).getHex();
+      break;
+    default: // same
+      legColor = new THREE.Color(bodyColor).multiplyScalar(0.75).getHex();
+      break;
+  }
+
+  // split 花纹时前后腿各自跟对应半身颜色
+  if (pattern === "split") {
+    hindLegColor = new THREE.Color(bodyColor).multiplyScalar(0.75).getHex();   // 后半=主色
+    foreLegColor = new THREE.Color(spot2).multiplyScalar(0.75).getHex();       // 前半=第二色
+  } else {
+    hindLegColor = legColor;
+    foreLegColor = legColor;
+  }
+
+  // 鬃毛/尾巴色
+  const maneOptions = [
+    new THREE.Color(bodyColor).multiplyScalar(0.3).getHex(), // 深色
+    0x222222, // 黑色
+    0xeeeecc, // 浅色
+    new THREE.Color(bodyColor).multiplyScalar(0.5).getHex(), // 中间色
+  ];
+  const maneColor = maneOptions[Math.floor(Math.random() * maneOptions.length)];
+
+  // 鼻子色
+  const noseColor = Math.random() > 0.5 ? 0x332211 : 0xffccaa;
+
+  return { bodyColor, legColor, hindLegColor, foreLegColor, maneColor, noseColor, riderColor, name, pattern, spotColor: spot2 };
+}
+
+export { randomAppearance, HORSE_NAMES };
+
 export class RagdollHorse {
   constructor(world, genome, startX = 0) {
     this.world = world;
     this.genome = { ...defaultGenome(), ...genome };
+    this.appearance = randomAppearance();
     this.motorPhase = 0;
     this.elapsed = 0;
     this.running = false;
@@ -170,6 +246,13 @@ export class RagdollHorse {
     this.locoSync       = g.locoSync || 0;
     this.spinalLoco     = g.spinalLoco || 0;
     this.fallen         = false;
+
+    // 侧翻检测 + 救马模式
+    this.minKickThreshold = this.kickStrength * 0.2; // 最小蹬地力阈值
+    this._noKickTimer = 0;       // 距上次有效蹬地的时间
+    this._rescueMode = false;    // 是否在救马模式
+    this._rescueBurst = 0;       // 救马模式连续使用次数（0~4）
+    this._rescueBurstTimer = 0;  // 连续使用间隔计时
 
     // FTOB/BTOF 步态耦合状态
     this._gaitState = {
@@ -594,12 +677,19 @@ export class RagdollHorse {
           this.bodies.body.applyImpulse({ x: thrustForce, y: 0 }, true);
         }
 
+        // 记录有效蹬地（用于侧翻检测）
+        const actualKick = this.kickStrength * angleCoeff;
+        if (actualKick >= this.minKickThreshold) {
+          this._noKickTimer = 0;
+          this._rescueMode = false;
+        }
+
         // 调试
         this.kickDebug[name] = {
           hipX: hoofWX, hipY: hoofWY,
           hoofX: hoofWX, hoofY: hoofWY,
           dirX, dirY,
-          force: this.kickStrength * angleCoeff,
+          force: actualKick,
           frictionForce: 0,
         };
       }
@@ -678,6 +768,51 @@ export class RagdollHorse {
     if (this.lastSwipeForce) {
       this.lastSwipeForce.timer -= dt;
       if (this.lastSwipeForce.timer <= 0) this.lastSwipeForce = null;
+    }
+
+    // 侧翻检测：1秒内没有有效蹬地 → 进入救马模式
+    this._noKickTimer += dt;
+    if (this._noKickTimer > 1.0 && !this._rescueMode) {
+      this._rescueMode = true;
+      this._rescueBurst = 0;
+      this._rescueBurstTimer = 0;
+    }
+
+    // 救马模式：AI马攒满体力后连续4次往右上拉（摔倒时也生效）
+    if (this._rescueMode && this.isAI && this.running) {
+      if (this._rescueBurst > 0) {
+        // 正在连续使用中
+        this._rescueBurstTimer -= dt;
+        if (this._rescueBurstTimer <= 0 && this.stamina >= 0.1) {
+          const angle = (60 + (Math.random() - 0.5) * 20) * Math.PI / 180; // 右上60°±10°
+          this.applyStamina(Math.cos(angle), Math.sin(angle));
+          this._rescueBurst--;
+          this._rescueBurstTimer = 0.1; // 0.1秒间隔
+        }
+      } else if (this.stamina >= 1.0) {
+        // 攒满了，开始连续4次
+        this._rescueBurst = 4;
+        this._rescueBurstTimer = 0;
+      }
+    }
+
+    // AI 骑手逻辑（非玩家马，救马模式时不走正常AI）
+    if (this.isAI && this.running && !this.fallen && !this._rescueMode) {
+      this._aiTimer = (this._aiTimer || 0) - dt;
+      if (this._aiTimer <= 0) {
+        this._aiTimer = 0.5 + Math.random() * 1.0; // 0.5~1.5秒检查间隔
+
+        if (this.stamina > 0.1) {
+          // 有 stamina*200% 的几率使用（体力50%时100%必用，体力10%时20%几率）
+          if (Math.random() < this.stamina * 2) {
+            // 右上45度 ± 10度
+            const angle = (45 + (Math.random() - 0.5) * 20) * Math.PI / 180;
+            const dirX = Math.cos(angle);
+            const dirY = Math.sin(angle);
+            this.applyStamina(dirX, dirY);
+          }
+        }
+      }
     }
   }
 
@@ -814,6 +949,10 @@ export class RagdollHorse {
     this.kickCooldown = { hindLeg: 0, foreLeg: 0 };
     this.fallen = false;
     this._lastOnGround = {};
+    this._noKickTimer = 0;
+    this._rescueMode = false;
+    this._rescueBurst = 0;
+    this._rescueBurstTimer = 0;
     this._gaitState = {
       hindLeg: { phase: 0, triggered: false },
       foreLeg: { phase: 0, triggered: false },
@@ -830,6 +969,7 @@ export class RagdollHorse {
       hindLegLenScale: this.hindLegLenScale,
       foreLegLenScale: this.foreLegLenScale,
       staminaRegenRate: this.staminaRegenRate,
+      appearance: { ...this.appearance },
       timestamp: Date.now(),
     };
   }
@@ -840,6 +980,7 @@ export class RagdollHorse {
     if (data.hindLegLenScale !== undefined) this.hindLegLenScale = data.hindLegLenScale;
     if (data.foreLegLenScale !== undefined) this.foreLegLenScale = data.foreLegLenScale;
     if (data.staminaRegenRate !== undefined) this.staminaRegenRate = data.staminaRegenRate;
+    if (data.appearance) this.appearance = { ...data.appearance };
     this._recalcParams();
   }
 }
