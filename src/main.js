@@ -289,6 +289,10 @@ function setupSwipe(canvas) {
     const dy = y - swipeStart.y;
     const len = Math.sqrt(dx * dx + dy * dy);
 
+    // 调试：显示滑动信息
+    const dbg = document.getElementById("info");
+    if (dbg) dbg.textContent = `滑动 len=${len.toFixed(0)} stamina=${playerHorse?.stamina?.toFixed(2)||"?"} player=${!!playerHorse}`;
+
     if (len > 15 && playerHorse && playerHorse.stamina > 0.01) {
       playerHorse.applyStamina(dx / len, -dy / len);
     }
@@ -307,10 +311,16 @@ function setupSwipe(canvas) {
 
   // 触摸事件（绑到 document 上，避免被其他元素遮挡）
   document.addEventListener("touchstart", (e) => {
+    // 忽略菜单和按钮上的触摸
+    if (e.target.closest("button") || e.target.closest("#main-menu") || e.target.closest("#finish-overlay") || e.target.closest("#horse-stats")) return;
     if (inMenu || raceFinished) return;
     e.preventDefault();
     const t = e.touches[0];
     onStart(t.clientX, t.clientY);
+    // 如果马还没开始跑，触摸也触发开始
+    for (const horse of horses) {
+      if (!horse.running) horse.running = true;
+    }
   }, { passive: false });
   document.addEventListener("touchmove", (e) => {
     if (!swipeStart) return;
@@ -323,10 +333,7 @@ function setupSwipe(canvas) {
     e.preventDefault();
     const t = e.changedTouches[0];
     onEnd(t.clientX, t.clientY);
-
-    swipeStart = null;
-    svg.innerHTML = "";
-  });
+  }, { passive: false });
 }
 
 // ════════════════════════════════════════════════════════════
