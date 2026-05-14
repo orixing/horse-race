@@ -258,42 +258,68 @@ let swipeStart = null;
 function setupSwipe(canvas) {
   const svg = document.querySelector("#swipe-indicator svg");
 
-  canvas.addEventListener("mousedown", (e) => {
-    if (e.target !== canvas) return;
-    swipeStart = { x: e.clientX, y: e.clientY };
-  });
+  function onStart(x, y) {
+    swipeStart = { x, y };
+  }
 
-  canvas.addEventListener("mousemove", (e) => {
+  function onMove(x, y) {
     if (!swipeStart) return;
-    const dx = e.clientX - swipeStart.x;
-    const dy = e.clientY - swipeStart.y;
+    const dx = x - swipeStart.x;
+    const dy = y - swipeStart.y;
     const len = Math.sqrt(dx * dx + dy * dy);
     if (len > 10) {
-      const ax = e.clientX + (dx / len) * 10;
-      const ay = e.clientY + (dy / len) * 10;
+      const ax = x + (dx / len) * 10;
+      const ay = y + (dy / len) * 10;
       const px1 = ax - (-dy / len) * 5;
       const py1 = ay - (dx / len) * 5;
       const px2 = ax + (-dy / len) * 5;
       const py2 = ay + (dx / len) * 5;
       svg.innerHTML = `
-        <line x1="${swipeStart.x}" y1="${swipeStart.y}" x2="${e.clientX}" y2="${e.clientY}"
+        <line x1="${swipeStart.x}" y1="${swipeStart.y}" x2="${x}" y2="${y}"
               stroke="rgba(170,100,255,0.6)" stroke-width="3" stroke-linecap="round"/>
-        <polygon points="${e.clientX},${e.clientY} ${px1},${py1} ${px2},${py2}"
+        <polygon points="${x},${y} ${px1},${py1} ${px2},${py2}"
                  fill="rgba(170,100,255,0.8)"/>
       `;
     }
-  });
+  }
 
-  canvas.addEventListener("mouseup", (e) => {
+  function onEnd(x, y) {
     if (!swipeStart) return;
-    const dx = e.clientX - swipeStart.x;
-    const dy = e.clientY - swipeStart.y;
+    const dx = x - swipeStart.x;
+    const dy = y - swipeStart.y;
     const len = Math.sqrt(dx * dx + dy * dy);
 
     if (len > 15 && playerHorse && playerHorse.stamina > 0.01) {
-      // 屏幕右→世界+X，屏幕上→世界+Y
       playerHorse.applyStamina(dx / len, -dy / len);
     }
+
+    swipeStart = null;
+    svg.innerHTML = "";
+  }
+
+  // 鼠标事件
+  canvas.addEventListener("mousedown", (e) => {
+    if (e.target !== canvas) return;
+    onStart(e.clientX, e.clientY);
+  });
+  canvas.addEventListener("mousemove", (e) => onMove(e.clientX, e.clientY));
+  canvas.addEventListener("mouseup", (e) => onEnd(e.clientX, e.clientY));
+
+  // 触摸事件
+  canvas.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    const t = e.touches[0];
+    onStart(t.clientX, t.clientY);
+  }, { passive: false });
+  canvas.addEventListener("touchmove", (e) => {
+    e.preventDefault();
+    const t = e.touches[0];
+    onMove(t.clientX, t.clientY);
+  }, { passive: false });
+  canvas.addEventListener("touchend", (e) => {
+    e.preventDefault();
+    const t = e.changedTouches[0];
+    onEnd(t.clientX, t.clientY);
 
     swipeStart = null;
     svg.innerHTML = "";
