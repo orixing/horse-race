@@ -305,18 +305,21 @@ function setupSwipe(canvas) {
   canvas.addEventListener("mousemove", (e) => onMove(e.clientX, e.clientY));
   canvas.addEventListener("mouseup", (e) => onEnd(e.clientX, e.clientY));
 
-  // 触摸事件
-  canvas.addEventListener("touchstart", (e) => {
+  // 触摸事件（绑到 document 上，避免被其他元素遮挡）
+  document.addEventListener("touchstart", (e) => {
+    if (inMenu || raceFinished) return;
     e.preventDefault();
     const t = e.touches[0];
     onStart(t.clientX, t.clientY);
   }, { passive: false });
-  canvas.addEventListener("touchmove", (e) => {
+  document.addEventListener("touchmove", (e) => {
+    if (!swipeStart) return;
     e.preventDefault();
     const t = e.touches[0];
     onMove(t.clientX, t.clientY);
   }, { passive: false });
-  canvas.addEventListener("touchend", (e) => {
+  document.addEventListener("touchend", (e) => {
+    if (!swipeStart) return;
     e.preventDefault();
     const t = e.changedTouches[0];
     onEnd(t.clientX, t.clientY);
