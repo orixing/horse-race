@@ -14,6 +14,9 @@ import debugRenderer from "./core/DebugRenderer.js";
 import horseDataManager from "./core/HorseDataManager.js";
 import { syncHorseMeshes, rebuildNameLabel } from "./core/HorseRenderer.js";
 
+// ── 服务器地址配置 ──
+const SERVER_URL = "ws://localhost:2567";
+
 // ── 主循环计时器 ──
 let timer;
 
@@ -33,6 +36,14 @@ async function init() {
     getPlayerHorse: () => raceManager.playerHorse,
     getHorses: () => raceManager.horses,
     isInputBlocked: () => raceManager.inMenu || raceManager.raceFinished,
+    // 联机模式：滑动输入发给服务器
+    onSwipe: (dx, dy) => {
+      if (raceManager.isOnline) {
+        raceManager.sendSwipe(dx, dy);
+        return true; // 拦截本地处理
+      }
+      return false;
+    },
   });
 
   // ── 绑定按钮事件 ──
@@ -43,7 +54,7 @@ async function init() {
     raceManager.startGameMode("tame");
   });
 
-  // 赛马
+  // 本地赛马
   document.getElementById("btn-race").addEventListener("click", (e) => {
     e.stopPropagation();
     if (!horseDataManager.hasSavedHorse()) {
@@ -52,6 +63,48 @@ async function init() {
     }
     raceManager.startGameMode("race");
   });
+
+  // 联机赛马 → 进入大厅
+  document.getElementById("btn-online").addEventListener("click", (e) => {
+    e.stopPropagation();
+    raceManager.enterLobby(SERVER_URL);
+  });
+
+  // ── 大厅 UI 事件 ──
+
+  // 创建房间（随机名称）
+  document.getElementById("btn-create-room").addEventListener("click", (e) => {
+    e.stopPropagation();
+    raceManager.createRoom();
+  });
+
+  // 刷新房间列表
+  document.getElementById("btn-refresh-rooms").addEventListener("click", (e) => {
+    e.stopPropagation();
+    raceManager.refreshRooms();
+  });
+
+  // 返回主界面（从大厅）
+  document.getElementById("btn-back-lobby").addEventListener("click", (e) => {
+    e.stopPropagation();
+    raceManager.resetRace();
+  });
+
+  // ── 房间等待 UI 事件 ──
+
+  // 开始比赛（房主）
+  document.getElementById("btn-start-game").addEventListener("click", (e) => {
+    e.stopPropagation();
+    raceManager.startGame();
+  });
+
+  // 离开房间
+  document.getElementById("btn-leave-room").addEventListener("click", (e) => {
+    e.stopPropagation();
+    raceManager.leaveRoom();
+  });
+
+  // ── 通用事件 ──
 
   // 空格键重置
   window.addEventListener("keydown", (e) => {
@@ -73,15 +126,24 @@ async function init() {
     raceManager.releaseAndNewHorse();
   });
 
-  // 点击屏幕开始比赛
+  // 点击屏幕开始比赛（仅本地模式）
   window.addEventListener("click", (e) => {
     if (raceManager.inMenu) return;
+    if (raceManager.isOnline) return; // 联机模式不响应点击开始
     if (e.target.closest(".lil-gui")) return;
+    if (e.target.closest("#online-lobby")) return;
+    if (e.target.closest("#room-wait")) return;
     raceManager.startAllHorses();
   });
 
-  // 返回主界面
+  // 返回主界面（比赛结束后）
   document.getElementById("btn-back-menu").addEventListener("click", (e) => {
+    e.stopPropagation();
+    raceManager.resetRace();
+  });
+
+  // 返回主界面（联机结算后）
+  document.getElementById("btn-online-back").addEventListener("click", (e) => {
     e.stopPropagation();
     raceManager.resetRace();
   });
@@ -129,33 +191,38 @@ function animate() {
   timer.update();
   const dt = Math.min(timer.getDelta(), 0.05);
 
-  // 物理更新
-  raceManager.updatePhysics(dt);
+  if (raceManager.isOnline) {
+    // ── 联机模式：从服务端状态同步渲染 ──
+    raceManager.syncOnlineHorses();
+  } else {
+    // ── 本地模式：本地物理 + 渲染 ──
+    raceManager.updatePhysics(dt);
 
-  // 3D同步
-  for (const horse of raceManager.horses) {
-    syncHorseMeshes(horse);
+    for (const horse of raceManager.horses) {
+      syncHorseMeshes(horse);
+    }
+
+    raceManager.checkRace();
+
+    if (raceManager.playerHorse) {
+      sceneManager.followTarget(raceManager.playerHorse.posX);
+    }
+
+    uiManager.updateStaminaBar(raceManager.playerHorse);
   }
 
-  // 比赛检测
-  raceManager.checkRace();
-
-  // 相机跟踪
-  if (raceManager.playerHorse) {
-    sceneManager.followTarget(raceManager.playerHorse.posX);
+  // 属性面板（两种模式都需要，但大厅阶段跳过）
+  if (!raceManager.isOnline || raceManager.horses.length > 0) {
+    uiManager.updateHorseStats(raceManager.horses, raceManager.inMenu);
   }
-
-  // 耐力条
-  uiManager.updateStaminaBar(raceManager.playerHorse);
-
-  // 属性面板
-  uiManager.updateHorseStats(raceManager.horses, raceManager.inMenu);
 
   // 渲染
   sceneManager.render();
 
-  // 调试画布
-  debugRenderer.updateVisibility(raceManager.playerHorse);
+  // 调试画布（仅本地模式）
+  if (!raceManager.isOnline) {
+    debugRenderer.updateVisibility(raceManager.playerHorse);
+  }
 }
 
 init().catch(err => {

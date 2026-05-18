@@ -210,6 +210,241 @@
     .release-btn:hover { border-color: #66cc66; }
     @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.08); } }
 
+    /* ── 联机大厅界面 ── */
+    #online-lobby {
+      display: none;
+      position: fixed; inset: 0;
+      background: linear-gradient(135deg, #1a1a3a 0%, #2a2a5a 50%, #1a1a3a 100%);
+      z-index: 200;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 40px;
+      color: #fff;
+    }
+    #online-lobby.active { display: flex; }
+    #online-lobby .lobby-title {
+      font-size: 2.2rem; font-weight: 900;
+      color: #88aaff;
+      text-shadow: 0 2px 10px rgba(100,150,255,0.3);
+      margin-bottom: 24px;
+    }
+    #online-lobby .lobby-actions {
+      display: flex; gap: 12px; margin-bottom: 20px;
+    }
+    #online-lobby .lobby-btn {
+      padding: 10px 28px;
+      font-size: 1rem; font-weight: bold;
+      color: #fff; border: none; border-radius: 10px;
+      cursor: pointer;
+      transition: transform 0.12s, box-shadow 0.12s;
+    }
+    #online-lobby .lobby-btn:hover { transform: translateY(-2px); }
+    #online-lobby .lobby-btn:active { transform: translateY(0) scale(0.97); }
+    .btn-create-room {
+      background: linear-gradient(135deg, #6633ff, #3366ff);
+      box-shadow: 0 3px 12px rgba(50,80,255,0.4);
+    }
+    .btn-refresh-rooms {
+      background: linear-gradient(135deg, #33aa66, #2288aa);
+      box-shadow: 0 3px 12px rgba(50,150,100,0.4);
+    }
+    .btn-back-lobby {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3) !important;
+    }
+    #room-list-container {
+      width: 90%; max-width: 500px;
+      flex: 1;
+      overflow-y: auto;
+    }
+    #room-list-container .room-empty {
+      text-align: center; color: rgba(255,255,255,0.4);
+      font-size: 1rem; margin-top: 40px;
+    }
+    .room-card {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 14px 18px;
+      margin-bottom: 10px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .room-card:hover {
+      background: rgba(255,255,255,0.14);
+      border-color: rgba(100,150,255,0.4);
+    }
+    .room-card .room-info { display: flex; flex-direction: column; gap: 4px; }
+    .room-card .room-name { font-size: 1.05rem; font-weight: bold; }
+    .room-card .room-players { font-size: 0.85rem; color: rgba(255,255,255,0.6); }
+    .room-card .btn-join {
+      padding: 8px 20px;
+      font-size: 0.9rem; font-weight: bold;
+      color: #fff;
+      background: linear-gradient(135deg, #33aa66, #2288aa);
+      border: none; border-radius: 8px;
+      cursor: pointer;
+      transition: transform 0.12s;
+    }
+    .room-card .btn-join:hover { transform: scale(1.05); }
+
+    /* ── 房间等待界面 ── */
+    #room-wait {
+      display: none;
+      position: fixed; inset: 0;
+      background: linear-gradient(135deg, #1a2a1a 0%, #2a4a2a 50%, #1a2a1a 100%);
+      z-index: 200;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 40px;
+      color: #fff;
+    }
+    #room-wait.active { display: flex; }
+    #room-wait .wait-title {
+      font-size: 2rem; font-weight: 900;
+      color: #88ff88;
+      text-shadow: 0 2px 10px rgba(100,255,100,0.3);
+      margin-bottom: 8px;
+    }
+    #room-wait .wait-phase {
+      font-size: 1rem; color: rgba(255,255,255,0.5);
+      margin-bottom: 20px;
+    }
+    #player-list {
+      width: 80%; max-width: 400px;
+      margin-bottom: 24px;
+    }
+    .player-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 16px;
+      margin-bottom: 6px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+    }
+    .player-row .player-name { font-weight: bold; }
+    .player-row .player-tag {
+      font-size: 0.8rem; padding: 2px 8px; border-radius: 4px;
+    }
+    .player-row .tag-host { background: #ffdd44; color: #333; }
+    .player-row .tag-ready { background: #44cc44; color: #fff; }
+    .player-row .tag-not-ready { background: #666; color: #aaa; }
+    .player-row .tag-you { background: rgba(100,150,255,0.3); color: #aaf; margin-left: 6px; }
+    #room-wait .wait-actions {
+      display: flex; gap: 12px;
+    }
+    #room-wait .wait-btn {
+      padding: 12px 36px;
+      font-size: 1.1rem; font-weight: bold;
+      color: #fff; border: none; border-radius: 10px;
+      cursor: pointer;
+      transition: transform 0.12s, box-shadow 0.12s;
+    }
+    #room-wait .wait-btn:hover { transform: translateY(-2px); }
+    #room-wait .wait-btn:active { transform: translateY(0) scale(0.97); }
+    .btn-ready {
+      background: linear-gradient(135deg, #33aa66, #228855);
+      box-shadow: 0 3px 12px rgba(50,170,100,0.4);
+    }
+    .btn-ready.is-ready {
+      background: linear-gradient(135deg, #aa6633, #885522);
+      box-shadow: 0 3px 12px rgba(170,100,50,0.4);
+    }
+    .btn-start-game {
+      background: linear-gradient(135deg, #ff6633, #ff3366);
+      box-shadow: 0 3px 12px rgba(255,50,80,0.4);
+    }
+    .btn-start-game:disabled {
+      opacity: 0.4; cursor: not-allowed;
+      transform: none !important;
+    }
+    .btn-leave-room {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3) !important;
+    }
+
+    /* ── 冲线名次提示 ── */
+    #finish-rank-toast {
+      display: none;
+      position: fixed; top: 15%; left: 50%; transform: translateX(-50%);
+      z-index: 160; pointer-events: none;
+      text-align: center;
+    }
+    #finish-rank-toast.active { display: block; }
+    #finish-rank-text {
+      font-size: 4rem; font-weight: 900;
+      color: #ffdd44;
+      text-shadow: 0 0 30px rgba(255,220,60,0.5), 0 3px 0 #aa8800;
+      animation: toast-in 0.4s ease-out;
+    }
+    @keyframes toast-in {
+      0% { transform: scale(2); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    /* ── 联机最终排名 ── */
+    #online-result-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 150;
+      flex-direction: column;
+      justify-content: center; align-items: center;
+      color: #fff;
+      backdrop-filter: blur(4px);
+    }
+    #online-result-overlay.active { display: flex; }
+    #online-result-overlay .result-title {
+      font-size: 3rem; font-weight: 900;
+      color: #ffdd44;
+      text-shadow: 0 0 20px rgba(255,220,60,0.4);
+      margin-bottom: 24px;
+    }
+    #online-result-list {
+      width: 80%; max-width: 420px;
+      margin-bottom: 28px;
+    }
+    .result-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 16px; margin-bottom: 6px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      font-size: 1.05rem;
+    }
+    .result-row.is-me {
+      background: rgba(255,220,60,0.15);
+      border-color: rgba(255,220,60,0.4);
+    }
+    .result-row .result-rank {
+      font-weight: 900; font-size: 1.3rem; min-width: 40px; text-align: center;
+    }
+    .result-row .result-rank.gold { color: #ffdd44; }
+    .result-row .result-rank.silver { color: #c0c0c0; }
+    .result-row .result-rank.bronze { color: #cd7f32; }
+    .result-row .result-name { flex: 1; margin-left: 12px; }
+    .result-row .result-time { color: rgba(255,255,255,0.7); font-size: 0.95rem; }
+
+    /* ── 倒计时覆盖层 ── */
+    #countdown-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      z-index: 150;
+      pointer-events: none;
+      justify-content: center; align-items: center;
+    }
+    #countdown-overlay.active { display: flex; }
+    #countdown-number {
+      font-size: 10rem; font-weight: 900;
+      color: #ffdd44;
+      text-shadow: 0 0 40px rgba(255,220,60,0.6), 0 4px 0 #aa8800;
+      animation: countdown-pulse 0.5s ease-in-out;
+    }
+    @keyframes countdown-pulse {
+      0% { transform: scale(1.5); opacity: 0.5; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
     /* ── 语言切换按钮 ── */
     #lang-toggle {
       position: fixed; top: 14px; right: 14px;
@@ -250,6 +485,33 @@
     <div style="height:20px"></div>
     <button class="menu-btn race-btn" id="btn-race" data-i18n="btnRace">开始赛马</button>
     <div class="menu-note" id="race-note" data-i18n="raceNote">使用捕获的马匹参赛</div>
+    <div style="height:20px"></div>
+    <button class="menu-btn" id="btn-online" style="background:linear-gradient(135deg,#6633ff,#3366ff);box-shadow:0 4px 15px rgba(50,80,255,0.4)" data-i18n="btnOnline">联机赛马</button>
+    <div class="menu-note" data-i18n="onlineNote">与其他玩家实时对战</div>
+  </div>
+
+  <!-- 联机大厅 -->
+  <div id="online-lobby">
+    <div class="lobby-title" data-i18n="lobbyTitle">联机大厅</div>
+    <div class="lobby-actions">
+      <button class="lobby-btn btn-create-room" id="btn-create-room" data-i18n="btnCreateRoom">创建房间</button>
+      <button class="lobby-btn btn-refresh-rooms" id="btn-refresh-rooms" data-i18n="btnRefresh">刷新</button>
+      <button class="lobby-btn btn-back-lobby" id="btn-back-lobby" data-i18n="btnBackMenu">返回主界面</button>
+    </div>
+    <div id="room-list-container">
+      <div class="room-empty" data-i18n="noRooms">暂无房间，点击上方创建一个</div>
+    </div>
+  </div>
+
+  <!-- 房间等待 -->
+  <div id="room-wait">
+    <div class="wait-title" id="room-wait-title">房间</div>
+    <div class="wait-phase" id="room-wait-phase" data-i18n="waitingPlayers">等待玩家加入...</div>
+    <div id="player-list"></div>
+    <div class="wait-actions">
+      <button class="wait-btn btn-start-game" id="btn-start-game" style="display:none" data-i18n="btnStartGame">开始比赛</button>
+      <button class="wait-btn btn-leave-room" id="btn-leave-room" data-i18n="btnLeaveRoom">离开房间</button>
+    </div>
   </div>
 
   <!-- 游戏 -->
@@ -265,6 +527,26 @@
   </div>
 
   <div id="swipe-indicator"><svg width="100%" height="100%"></svg></div>
+
+  <!-- 联机倒计时 -->
+  <div id="countdown-overlay">
+    <div id="countdown-number"></div>
+  </div>
+
+  <!-- 冲线名次提示（短暂显示） -->
+  <div id="finish-rank-toast">
+    <div id="finish-rank-text"></div>
+  </div>
+
+  <!-- 联机最终排名 -->
+  <div id="online-result-overlay">
+    <div class="result-title" data-i18n="raceFinished">比赛结束</div>
+    <div id="online-result-list"></div>
+    <button class="finish-btn" id="btn-online-back">
+      <span class="btn-icon">🏠</span>
+      <span class="btn-label" data-i18n="backToMenu">返回主界面</span>
+    </button>
+  </div>
 
   <div id="finish-overlay">
     <div class="title" data-i18n="tameSuccess">驯服成功!</div>

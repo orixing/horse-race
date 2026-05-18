@@ -21,11 +21,13 @@ class InputManager {
    * @param {function} callbacks.getPlayerHorse 返回玩家马匹
    * @param {function} callbacks.getHorses 返回所有马匹数组
    * @param {function} callbacks.isInputBlocked 返回是否屏蔽输入
+   * @param {function} [callbacks.onSwipe] 滑动回调（联机模式），返回 true 表示已处理
    */
   init(callbacks) {
     this.getPlayerHorse = callbacks.getPlayerHorse;
     this.getHorses = callbacks.getHorses;
     this.isInputBlocked = callbacks.isInputBlocked;
+    this.onSwipe = callbacks.onSwipe || null;
 
     const canvas = document.getElementById("canvas3d");
     this._setupSwipe(canvas);
@@ -65,10 +67,17 @@ class InputManager {
       const dy = y - this.swipeStart.y;
       const len = Math.sqrt(dx * dx + dy * dy);
 
-      const playerHorse = this.getPlayerHorse();
-
-      if (len > 15 && playerHorse && playerHorse.stamina > 0.01) {
-        playerHorse.applyStamina(dx / len, -dy / len);
+      if (len > 15) {
+        // 联机模式：发给服务器（注意 dy 取反，屏幕上=世界+Y）
+        if (this.onSwipe && this.onSwipe(dx / len, -dy / len)) {
+          // 已由联机回调处理
+        } else {
+          // 本地模式：直接施力
+          const playerHorse = this.getPlayerHorse();
+          if (playerHorse && playerHorse.stamina > 0.01) {
+            playerHorse.applyStamina(dx / len, -dy / len);
+          }
+        }
       }
 
       this.swipeStart = null;

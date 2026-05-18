@@ -13,6 +13,11 @@ const translations = {
     practiceNote: "尝试捕获新的随机马匹",
     btnRace: "开始赛马",
     raceNote: "使用捕获的马匹参赛",
+    btnOnline: "联机赛马",
+    onlineNote: "与其他玩家实时对战",
+    connecting: "正在连接服务器...",
+    waitingPlayers: "等待其他玩家...",
+    countdown: "倒计时 {n}",
     // 游戏UI
     loading: "加载中...",
     loadingProgress: "正在加载...",
@@ -93,6 +98,28 @@ const translations = {
     // 错误
     initFailed: "初始化失败:",
     errorMsg: "错误: {msg}",
+    // 联机大厅
+    lobbyTitle: "联机大厅",
+    btnCreateRoom: "创建房间",
+    btnRefresh: "刷新",
+    btnBackMenu: "返回主界面",
+    noRooms: "暂无房间，点击上方创建一个",
+    roomPlayers: "{n}/{max} 玩家",
+    btnJoin: "加入",
+    // 房间等待
+    waitingPlayers: "等待玩家加入...",
+    btnStartGame: "开始比赛",
+    btnLeaveRoom: "离开房间",
+    tagHost: "房主",
+    tagYou: "你",
+    raceFinished: "比赛结束",
+    finishRankToast: "第 {n} 名!",
+    finishChampionToast: "冠军!",
+    laneNumber: "{n}号赛道",
+    connectLobbyFailed: "连接大厅失败！",
+    createRoomFailed: "创建房间失败！",
+    joinRoomFailed: "加入房间失败！",
+    refreshFailed: "刷新失败！",
     // 语言切换按钮
     langSwitch: "EN",
   },
@@ -106,6 +133,11 @@ const translations = {
     practiceNote: "Try to capture a new random horse",
     btnRace: "Start Racing",
     raceNote: "Race with your captured horse",
+    btnOnline: "Online Race",
+    onlineNote: "Race against other players online",
+    connecting: "Connecting to server...",
+    waitingPlayers: "Waiting for players...",
+    countdown: "Countdown {n}",
     // 游戏UI
     loading: "Loading...",
     loadingProgress: "Loading...",
@@ -186,6 +218,28 @@ const translations = {
     // 错误
     initFailed: "Init Failed:",
     errorMsg: "Error: {msg}",
+    // 联机大厅
+    lobbyTitle: "Online Lobby",
+    btnCreateRoom: "Create Room",
+    btnRefresh: "Refresh",
+    btnBackMenu: "Back to Menu",
+    noRooms: "No rooms yet. Create one above!",
+    roomPlayers: "{n}/{max} players",
+    btnJoin: "Join",
+    // 房间等待
+    waitingPlayers: "Waiting for players...",
+    btnStartGame: "Start Race",
+    btnLeaveRoom: "Leave Room",
+    tagHost: "Host",
+    tagYou: "You",
+    raceFinished: "Race Finished",
+    finishRankToast: "#{n}!",
+    finishChampionToast: "Champion!",
+    laneNumber: "Lane {n}",
+    connectLobbyFailed: "Failed to connect to lobby!",
+    createRoomFailed: "Failed to create room!",
+    joinRoomFailed: "Failed to join room!",
+    refreshFailed: "Refresh failed!",
     // 语言切换按钮
     langSwitch: "中文",
   },
@@ -206,7 +260,8 @@ export const HORSE_NAMES_EN = [
   "Pudding", "Scooter", "Maple", "Tumble", "Crumbs", "Dash", "Bongo", "Sprout",
 ];
 
-let currentLang = localStorage.getItem("gameLang") || "zh";
+const _hasLocalStorage = typeof localStorage !== "undefined";
+let currentLang = (_hasLocalStorage && localStorage.getItem("gameLang")) || "zh";
 
 // 所有监听语言变化的回调
 const listeners = [];
@@ -217,7 +272,7 @@ export function getLang() {
 
 export function setLang(lang) {
   currentLang = lang;
-  localStorage.setItem("gameLang", lang);
+  if (_hasLocalStorage) localStorage.setItem("gameLang", lang);
   // 通知所有监听者
   for (const cb of listeners) cb(lang);
 }

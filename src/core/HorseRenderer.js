@@ -3,7 +3,7 @@
  */
 
 import * as THREE from "three";
-import { getHorseDisplayName } from "../i18n.js";
+import { getHorseDisplayName, t } from "../i18n.js";
 import sceneManager from "./SceneManager.js";
 
 /**
@@ -122,7 +122,7 @@ export function build3DHorse(horse) {
 
   // 名牌
   horse.name = ap.name || "???";
-  const displayName = getHorseDisplayName(ap.names || ap.name) || horse.name;
+  let displayName = getHorseDisplayName(ap.names || ap.name) || horse.name;
   const nameCanvas = document.createElement("canvas");
   nameCanvas.width = 512; nameCanvas.height = 32;
   const nc = nameCanvas.getContext("2d");
@@ -136,6 +136,15 @@ export function build3DHorse(horse) {
   );
   m.nameLabel.renderOrder = 999;
   scene.add(m.nameLabel);
+
+  // ── 玩家指示器（箭头 + "你 赛道N"/"YOU Lane N"，仅多马模式）──
+  if (horse.isPlayer && horse._showIndicator) {
+    const indicatorLabel = horse._laneLabel
+      ? `${t("tagYou")}    ${horse._laneLabel}`
+      : t("tagYou");
+    m.playerIndicator = _buildPlayerIndicator(indicatorLabel);
+    scene.add(m.playerIndicator);
+  }
 
   // ── 骑手 ──
   const sc = 0.7 + ((horse.genome.size || 100) / 100) * 0.3;
@@ -180,6 +189,66 @@ export function build3DHorse(horse) {
 }
 
 /**
+ * 创建玩家马匹指示器：向下箭头 + 文字标签
+ * @param {string} label 显示文字，如 "你  赛道5" / "YOU  Lane 5"
+ */
+function _buildPlayerIndicator(label) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+
+  // 文字
+  ctx.fillStyle = "#ffdd44";
+  ctx.font = "bold 32px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.shadowColor = "rgba(0,0,0,0.6)";
+  ctx.shadowBlur = 4;
+  ctx.fillText(label, 128, 6);
+
+  // 箭头 ▼
+  ctx.shadowBlur = 2;
+  ctx.beginPath();
+  ctx.moveTo(108, 55);
+  ctx.lineTo(148, 55);
+  ctx.lineTo(128, 90);
+  ctx.closePath();
+  ctx.fillStyle = "#ffdd44";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(0,0,0,0.4)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  const tex = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.SpriteMaterial({
+    map: tex,
+    transparent: true,
+    depthTest: false,
+    opacity: 1.0,
+  });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(1.4, 0.7, 1);
+  sprite.renderOrder = 1000;
+  // 用于动画
+  sprite.userData._indicatorTime = 0;
+  sprite.userData._fadeStart = -1;  // 未开始淡出
+  return sprite;
+}
+
+/**
+ * 触发玩家指示器开始淡出
+ * @param {object} horse 马匹对象
+ * @param {number} [duration=2] 淡出持续秒数
+ */
+export function fadeOutPlayerIndicator(horse, duration = 2) {
+  const ind = horse.meshes?.playerIndicator;
+  if (!ind) return;
+  ind.userData._fadeStart = ind.userData._indicatorTime;
+  ind.userData._fadeDuration = duration;
+}
+
+/**
  * 同步一匹马的物理状态到3D网格
  */
 export function syncHorseMeshes(horse) {
@@ -201,6 +270,28 @@ export function syncHorseMeshes(horse) {
   apply(m.head, st.head);
   st.tailSegs.forEach((s, i) => apply(m.tailSegs[i], s));
   m.nameLabel.position.set(st.body.x, st.body.y + horse.bodyH / 2 + 0.5, z);
+
+  // 玩家指示器动画
+  if (m.playerIndicator) {
+    const ind = m.playerIndicator;
+    ind.userData._indicatorTime += 1 / 60;
+    const elapsed = ind.userData._indicatorTime;
+
+    // 上下浮动
+    const bobY = Math.sin(elapsed * 3) * 0.08;
+    ind.position.set(st.body.x, st.body.y + horse.bodyH / 2 + 1.0 + bobY, z);
+
+    // 淡出逻辑
+    if (ind.userData._fadeStart >= 0) {
+      const fadeElapsed = elapsed - ind.userData._fadeStart;
+      const fadeDuration = ind.userData._fadeDuration || 2;
+      const alpha = 1.0 - Math.min(fadeElapsed / fadeDuration, 1.0);
+      ind.material.opacity = alpha;
+      if (alpha <= 0) {
+        ind.visible = false;
+      }
+    }
+  }
 
   // 骑手弹跳动画
   if (m.rider && horse.running) {

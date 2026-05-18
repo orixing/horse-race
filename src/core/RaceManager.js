@@ -1,100 +1,87 @@
 /**
- * RaceManager — 比赛逻辑（创建马匹、物理世界、终点检测、排名、重置）
+ * RaceManager — 客户端编排层
+ *
+ * 支持两种模式：
+ * - 本地模式（tame/race）：本地物理模拟
+ * - 联机模式（online）：大厅 → 房间等待 → 比赛
  */
 
-import RAPIER from "@dimforge/rapier2d-compat";
-import { RagdollHorse, randomGenome } from "../RagdollHorse.js";
-import {
-  LANE_WIDTH, START_X, GROUND_Y,
-  TAME_CONFIGS, RACE_CONFIGS, MODE_SETTINGS,
-} from "../config/constants.js";
-import { build3DHorse, removeHorseMeshes } from "./HorseRenderer.js";
+import { GameSimulation } from "./GameSimulation.js";
+import { build3DHorse, removeHorseMeshes, syncHorseMeshes, fadeOutPlayerIndicator } from "./HorseRenderer.js";
 import horseDataManager from "./HorseDataManager.js";
+import networkManager from "./NetworkManager.js";
 import raceTrack from "./RaceTrack.js";
 import sceneManager from "./SceneManager.js";
 import uiManager from "./UIManager.js";
 import debugRenderer from "./DebugRenderer.js";
-import { t } from "../i18n.js";
+import { START_X, LANE_WIDTH, MODE_SETTINGS } from "../config/constants.js";
+import { t, getLang, getHorseDisplayName } from "../i18n.js";
 
 class RaceManager {
   constructor() {
-    this.worlds = [];
-    this.horses = [];
-    this.playerHorse = null;
-    this.raceFinished = false;
+    /** @type {GameSimulation} 本地物理模拟层 */
+    this.sim = new GameSimulation();
     this.inMenu = true;
-    this.gameMode = null; // "tame" | "race"
-    this.laneCount = 1;
-    this.finishX = 20;
+    this._isOnline = false;
+
+    // ── 联机模式数据 ──
+    /** @type {Map<string, object>} key → { pseudoHorse, horseState, key } */
+    this._netHorses = new Map();
+    this._netPhase = "lobby";
+    this._netFinished = false;
+    this._netPlayerKey = null;
   }
 
-  /**
-   * 启动一个游戏模式
-   * @param {"tame"|"race"} mode
-   */
-  startGameMode(mode) {
-    this.gameMode = mode;
+  // ── 代理属性 ──
+  get horses() {
+    if (this._isOnline) {
+      return Array.from(this._netHorses.values()).map(e => e.pseudoHorse);
+    }
+    return this.sim.horses;
+  }
 
-    // 清理旧数据
-    this.clearAllHorses();
+  get playerHorse() {
+    if (this._isOnline) {
+      const entry = this._netHorses.get(this._netPlayerKey);
+      return entry ? entry.pseudoHorse : null;
+    }
+    return this.sim.playerHorse;
+  }
+
+  get raceFinished() {
+    if (this._isOnline) return this._netFinished;
+    return this.sim.raceFinished;
+  }
+
+  get gameMode() {
+    if (this._isOnline) return "online";
+    return this.sim.gameMode;
+  }
+
+  // ════════════════════════════════════════════════════════════
+  //  本地模式（保持不变）
+  // ════════════════════════════════════════════════════════════
+
+  startGameMode(mode) {
+    this._isOnline = false;
+    this._clearRendering();
     raceTrack.clear();
 
-    // 模式设置
-    const settings = MODE_SETTINGS[mode];
-    this.laneCount = settings.laneCount;
-    this.finishX = settings.finishX;
+    this.sim.initRace(mode, {
+      savedHorseData: mode === "race" ? horseDataManager.loadSavedHorse() : null,
+      generateHorseData: () => horseDataManager.generateHorseData(),
+    });
 
-    // 重建赛道
-    raceTrack.build(this.laneCount, this.finishX);
+    raceTrack.build(this.sim.laneCount, this.sim.finishX);
 
-    // 创建马匹
-    const configs = mode === "race" ? RACE_CONFIGS : TAME_CONFIGS;
-    const startZ = -(configs.length - 1) * LANE_WIDTH / 2;
-
-    for (let i = 0; i < configs.length; i++) {
-      const cfg = configs[i];
-
-      const horseWorld = new RAPIER.World({ x: 0.0, y: -9.81 });
-      const groundBody = horseWorld.createRigidBody(
-        RAPIER.RigidBodyDesc.fixed().setTranslation(0, GROUND_Y - 0.5)
-      );
-      horseWorld.createCollider(
-        RAPIER.ColliderDesc.cuboid(500, 0.5).setFriction(0.8).setRestitution(0.02),
-        groundBody
-      );
-      this.worlds.push(horseWorld);
-
-      let genome, poolData;
-      if (mode === "race" && cfg.isPlayer) {
-        const saved = horseDataManager.loadSavedHorse();
-        if (saved) {
-          genome = saved.genome || randomGenome();
-          poolData = saved;
-        } else {
-          genome = randomGenome();
-        }
-      } else {
-        poolData = horseDataManager.generateHorseData();
-        genome = poolData ? poolData.genome : randomGenome();
-      }
-
-      const horse = new RagdollHorse(horseWorld, genome, START_X);
-      if (poolData) horse.importData(poolData);
-      horse.horseWorld = horseWorld;
-      horse.lane = cfg.lane;
-      horse.isPlayer = cfg.isPlayer || false;
-      horse.isAI = !horse.isPlayer;
-      horse.laneZ = startZ + i * LANE_WIDTH;
-
+    for (const horse of this.sim.horses) {
+      // 赛马模式下标记玩家的马需要显示指示器
+      if (mode === "race" && horse.isPlayer) horse._showIndicator = true;
       horse.meshes = build3DHorse(horse);
-      this.horses.push(horse);
-      if (horse.isPlayer) this.playerHorse = horse;
     }
 
-    // UI切换
     uiManager.hideMenu();
     this.inMenu = false;
-    this.raceFinished = false;
 
     if (mode === "race") {
       debugRenderer.setVisible(false);
@@ -104,123 +91,590 @@ class RaceManager {
       uiManager.setTameModeUI();
     }
 
-    // 重置相机
     sceneManager.resetCameraX(START_X);
   }
 
-  /**
-   * 清理所有马匹和物理世界
-   */
-  clearAllHorses() {
-    for (const horse of this.horses) {
-      removeHorseMeshes(horse);
-      if (horse.horseWorld) {
-        const allBodies = [
-          horse.bodies.body, horse.bodies.hindLeg, horse.bodies.foreLeg,
-          horse.bodies.neck, horse.bodies.head, ...horse.bodies.tailSegs,
-        ];
-        for (const b of allBodies) {
-          if (b) horse.horseWorld.removeRigidBody(b);
-        }
-      }
-    }
-    this.horses = [];
-    this.worlds = [];
-    this.playerHorse = null;
-  }
-
-  /**
-   * 更新物理模拟（每帧调用）
-   */
   updatePhysics(dt) {
-    if (this.raceFinished || this.inMenu) return;
-    for (const horse of this.horses) {
-      horse.update(dt);
-      if (horse.running) horse.horseWorld.step();
-    }
+    if (this.inMenu || this._isOnline) return;
+    this.sim.update(dt);
   }
 
-  /**
-   * 终点检测和排名更新
-   */
   checkRace() {
-    if (this.raceFinished) return;
+    if (this._isOnline) return;
+    if (this.sim.raceFinished) return;
 
-    // 赛马模式：更新排名
-    if (this.gameMode === "race") {
-      uiManager.updateRankings(this.horses);
+    if (this.sim.gameMode === "race") {
+      uiManager.updateRankings(this.sim.horses);
     }
 
-    // 终点检测
-    if (this.playerHorse && this.playerHorse.posX >= this.finishX) {
-      this.raceFinished = true;
-      uiManager.showFinishOverlay(this.gameMode, this.horses, this.playerHorse);
+    const result = this.sim.checkFinish();
+    if (result.finished) {
+      uiManager.showFinishOverlay(this.sim.gameMode, this.sim.horses, this.sim.playerHorse);
     }
   }
 
-  /**
-   * 重置比赛 → 返回主菜单
-   */
   resetRace() {
-    this.raceFinished = false;
+    if (this._isOnline) {
+      networkManager.disconnectAll();
+      this._clearOnlineHorses();
+      this._isOnline = false;
+    }
+
     uiManager.hideFinishOverlay();
-    this.clearAllHorses();
+    this._showCountdown(false);
+    this._hideFinishRankToast();
+    this._hideOnlineResult();
+    this._hideLobbyUI();
+    this._hideRoomWaitUI();
+    this._clearRendering();
+    this.sim.cleanup();
     this.inMenu = true;
-    this.gameMode = null;
     uiManager.showMenu();
   }
 
-  /**
-   * 放生此马 → 不回主菜单，直接重置+新马
-   */
   releaseAndNewHorse() {
-    this.raceFinished = false;
+    this.sim.raceFinished = false;
     uiManager.hideFinishOverlay();
 
-    const configs = this.gameMode === "race" ? RACE_CONFIGS : TAME_CONFIGS;
-
-    for (let i = 0; i < this.horses.length; i++) {
-      const oldHorse = this.horses[i];
-      const cfg = configs[i];
-
-      // 删除旧3D网格
-      removeHorseMeshes(oldHorse);
-
-      // 删除旧物理刚体
-      const allBodies = [
-        oldHorse.bodies.body, oldHorse.bodies.hindLeg, oldHorse.bodies.foreLeg,
-        oldHorse.bodies.neck, oldHorse.bodies.head, ...oldHorse.bodies.tailSegs,
-      ];
-      for (const b of allBodies) {
-        if (b) oldHorse.horseWorld.removeRigidBody(b);
-      }
-
-      // 创建新马
+    for (let i = 0; i < this.sim.horses.length; i++) {
+      removeHorseMeshes(this.sim.horses[i]);
       const poolData = horseDataManager.generateHorseData();
-      const genome = poolData ? poolData.genome : randomGenome();
-      const newHorse = new RagdollHorse(oldHorse.horseWorld, genome, START_X);
-      if (poolData) newHorse.importData(poolData);
-      newHorse.horseWorld = oldHorse.horseWorld;
-      newHorse.lane = oldHorse.lane;
-      newHorse.isPlayer = cfg.isPlayer || false;
-      newHorse.isAI = !newHorse.isPlayer;
-      newHorse.laneZ = oldHorse.laneZ;
-
+      const newHorse = this.sim.replaceHorse(i, poolData);
       newHorse.meshes = build3DHorse(newHorse);
-      this.horses[i] = newHorse;
-      if (newHorse.isPlayer) this.playerHorse = newHorse;
     }
 
-    // 强制右侧面板刷新
     uiManager.forceRefreshStats();
   }
 
-  /**
-   * 让所有未运行的马匹开始跑
-   */
   startAllHorses() {
-    for (const horse of this.horses) {
-      if (!horse.running) horse.running = true;
+    if (this._isOnline) return;
+    this.sim.startAllHorses();
+    // 开赛后淡出玩家指示器（只触发一次）
+    for (const horse of this.sim.horses) {
+      const ind = horse.meshes?.playerIndicator;
+      if (horse.isPlayer && ind && ind.userData._fadeStart < 0) {
+        fadeOutPlayerIndicator(horse, 3);
+      }
+    }
+  }
+
+  _clearRendering() {
+    for (const horse of this.sim.horses) {
+      removeHorseMeshes(horse);
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════
+  //  联机模式 — 大厅
+  // ════════════════════════════════════════════════════════════
+
+  /**
+   * 进入联机大厅
+   */
+  async enterLobby(serverUrl) {
+    this._isOnline = true;
+    this._serverUrl = serverUrl;
+
+    uiManager.hideMenu();
+    this.inMenu = false;
+
+    // 注册房间列表更新回调
+    networkManager.onRoomsUpdate((rooms) => this._updateRoomListUI(rooms));
+
+    // 连接大厅
+    const ok = await networkManager.connectLobby(serverUrl);
+    if (!ok) {
+      alert(t("connectLobbyFailed"));
+      this.resetRace();
+      return;
+    }
+
+    this._showLobbyUI();
+  }
+
+  /**
+   * 创建新房间（随机名称）
+   */
+  async createRoom() {
+    const saved = horseDataManager.loadSavedHorse();
+    const roomName = this._randomRoomName();
+    const options = { roomName };
+    if (saved) {
+      options.genome = saved.genome;
+      options.horseData = saved;
+    }
+
+    this._setupRoomCallbacks();
+
+    const ok = await networkManager.createRoom(options);
+    if (!ok) {
+      alert(t("createRoomFailed"));
+      return;
+    }
+
+    this._netPlayerKey = networkManager.sessionId;
+    this._hideLobbyUI();
+    this._showRoomWaitUI(roomName);
+  }
+
+  /**
+   * 刷新房间列表（重新连接大厅）
+   */
+  async refreshRooms() {
+    networkManager.leaveLobby();
+    const ok = await networkManager.connectLobby(this._serverUrl);
+    if (!ok) {
+      alert(t("refreshFailed"));
+    }
+  }
+
+  _randomRoomName() {
+    const isEn = getLang() === "en";
+    if (isEn) {
+      const adjectives = ["Crazy", "Lightning", "Thunder", "Wild", "Blazing", "Turbo", "Storm", "Star", "Rapid", "Shadow"];
+      const nouns = ["Derby", "Arena", "Sprint", "Track", "Cup", "Grand Prix", "Rally", "Chase", "Dash", "Race"];
+      const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+      const noun = nouns[Math.floor(Math.random() * nouns.length)];
+      return `${adj} ${noun}`;
+    } else {
+      const adjectives = ["疯狂", "飞驰", "闪电", "旋风", "烈焰", "极速", "狂野", "风暴", "雷霆", "星光"];
+      const nouns = ["赛场", "竞技场", "草原", "跑道", "牧场", "战场", "大奖赛", "锦标赛", "杯", "联赛"];
+      const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+      const noun = nouns[Math.floor(Math.random() * nouns.length)];
+      return `${adj}${noun}`;
+    }
+  }
+
+  /**
+   * 加入已有房间
+   */
+  async joinRoom(roomId) {
+    const saved = horseDataManager.loadSavedHorse();
+    const options = {};
+    if (saved) {
+      options.genome = saved.genome;
+      options.horseData = saved;
+    }
+
+    this._setupRoomCallbacks();
+
+    const ok = await networkManager.joinRoom(roomId, options);
+    if (!ok) {
+      alert(t("joinRoomFailed"));
+      return;
+    }
+
+    this._netPlayerKey = networkManager.sessionId;
+    this._hideLobbyUI();
+    const state = networkManager.room.state;
+    this._showRoomWaitUI(state.roomName || "赛马房间");
+  }
+
+  /**
+   * 离开当前房间，回到大厅
+   */
+  leaveRoom() {
+    networkManager.disconnect();
+    this._clearOnlineHorses();
+    this._hideRoomWaitUI();
+    this._showLobbyUI();
+  }
+
+  /**
+   * 切换准备状态
+   */
+  toggleReady() {
+    networkManager.toggleReady();
+  }
+
+  /**
+   * 房主开始比赛
+   */
+  startGame() {
+    networkManager.startGame();
+  }
+
+  _setupRoomCallbacks() {
+    networkManager.onHorseAdd((hs, key) => this._onNetHorseAdd(hs, key));
+    networkManager.onHorseRemove((hs, key) => this._onNetHorseRemove(hs, key));
+    networkManager.onPhaseChange((phase) => this._onNetPhaseChange(phase));
+    networkManager.onHorseFinished((data) => this._onNetHorseFinished(data));
+    networkManager.onRaceResult((data) => this._onNetRaceResult(data));
+    networkManager.onPlayerAdd(() => this._refreshPlayerListUI());
+    networkManager.onPlayerRemove(() => this._refreshPlayerListUI());
+    networkManager.onStateChange(() => this._refreshPlayerListUI());
+    networkManager.onError((msg) => alert(msg));
+  }
+
+  // ════════════════════════════════════════════════════════════
+  //  联机模式 — 比赛中
+  // ════════════════════════════════════════════════════════════
+
+  _onNetHorseAdd(horseState, key) {
+    const appearance = JSON.parse(horseState.appearanceJSON || "{}");
+    const genome = JSON.parse(horseState.genomeJSON || "{}");
+
+    const isLocal = networkManager.isLocalPlayer(horseState);
+    const laneNum = horseState.lane + 1; // lane 0=最远=#1, lane 4=最近=#5
+    const pseudoHorse = {
+      appearance,
+      genome,
+      name: appearance.name || "???",
+      isPlayer: isLocal,
+      _showIndicator: isLocal,
+      _laneLabel: t("laneNumber", { n: laneNum }),
+      isAI: horseState.isAI,
+      lane: horseState.lane,
+      laneZ: horseState.laneZ,
+      bodyW: horseState.bodyW,
+      bodyH: horseState.bodyH,
+      legW: horseState.legW,
+      legLen: horseState.legLen,
+      neckW: horseState.neckW,
+      neckLen: horseState.neckLen,
+      headW: horseState.headW,
+      headH: horseState.headH,
+      posX: horseState.posX,
+      posY: 0,
+      stamina: horseState.stamina,
+      running: horseState.running,
+      fallen: horseState.fallen,
+      elapsed: 0,
+      meshes: null,
+    };
+
+    pseudoHorse.meshes = build3DHorse(pseudoHorse);
+
+    this._netHorses.set(key, {
+      pseudoHorse,
+      horseState,
+      key,
+    });
+  }
+
+  _onNetHorseRemove(horseState, key) {
+    const entry = this._netHorses.get(key);
+    if (entry) {
+      removeHorseMeshes(entry.pseudoHorse);
+      this._netHorses.delete(key);
+    }
+  }
+
+  _onNetPhaseChange(phase) {
+    this._netPhase = phase;
+
+    if (phase === "countdown") {
+      // 倒计时开始，切换到游戏渲染界面
+      this._hideRoomWaitUI();
+      debugRenderer.setVisible(false);
+      uiManager.setRaceModeUI();
+
+      // 建赛道
+      const state = networkManager.room.state;
+      raceTrack.build(state.laneCount || 5, state.finishX || 30);
+      sceneManager.resetCameraX(START_X);
+
+      // 显示倒计时覆盖层
+      this._showCountdown(true);
+    }
+
+    if (phase === "racing") {
+      // 隐藏倒计时
+      this._showCountdown(false);
+
+      // 开赛后淡出玩家指示器
+      for (const [key, entry] of this._netHorses) {
+        if (entry.pseudoHorse.isPlayer) {
+          fadeOutPlayerIndicator(entry.pseudoHorse, 3);
+        }
+      }
+    }
+
+    if (phase === "finished") {
+      this._netFinished = true;
+    }
+  }
+
+  /**
+   * 单匹马冲线 — 如果是自己，显示名次提示
+   */
+  _onNetHorseFinished(data) {
+    const { rank, key, time } = data;
+    if (key === networkManager.sessionId) {
+      // 自己冲线了，显示名次提示
+      const text = rank === 1 ? t("finishChampionToast") : t("finishRankToast", { n: rank });
+      this._showFinishRankToast(text);
+    }
+  }
+
+  /**
+   * 所有马冲线 — 显示完整排名结算界面
+   */
+  _onNetRaceResult(data) {
+    this._netFinished = true;
+    this._hideFinishRankToast();
+    this._showOnlineResult(data.rankings);
+  }
+
+  /**
+   * 每帧同步服务端状态到3D渲染
+   */
+  syncOnlineHorses() {
+    if (!this._isOnline) return;
+    if (this._netPhase === "lobby") return; // 大厅阶段不渲染
+
+    // 更新倒计时数字
+    if (this._netPhase === "countdown" && networkManager.room) {
+      const cd = networkManager.room.state.countdown;
+      this._updateCountdownNumber(cd);
+    }
+
+    let playerPosX = START_X;
+
+    for (const [key, entry] of this._netHorses) {
+      const hs = entry.horseState;
+      const ph = entry.pseudoHorse;
+
+      ph.posX = hs.posX;
+      ph.stamina = hs.stamina;
+      ph.running = hs.running;
+      ph.fallen = hs.fallen;
+      if (ph.running) ph.elapsed += 1 / 60;
+
+      if (ph.meshes) {
+        const st = {
+          body: { x: hs.body.x, y: hs.body.y, angle: hs.body.angle },
+          hindLeg: { x: hs.hindLeg.x, y: hs.hindLeg.y, angle: hs.hindLeg.angle },
+          foreLeg: { x: hs.foreLeg.x, y: hs.foreLeg.y, angle: hs.foreLeg.angle },
+          neck: { x: hs.neck.x, y: hs.neck.y, angle: hs.neck.angle },
+          head: { x: hs.head.x, y: hs.head.y, angle: hs.head.angle },
+          tailSegs: [],
+        };
+        for (let i = 0; i < hs.tailSegs.length; i++) {
+          const ts = hs.tailSegs[i];
+          st.tailSegs.push({ x: ts.x, y: ts.y, angle: ts.angle });
+        }
+
+        ph.getBodyState = () => st;
+        ph.getCollarWorldPos = () => {
+          const na = hs.neck.angle;
+          const np = { x: hs.neck.x, y: hs.neck.y };
+          return {
+            x: np.x + Math.sin(na) * (-ph.neckLen / 2),
+            y: np.y - Math.cos(na) * (-ph.neckLen / 2),
+          };
+        };
+
+        syncHorseMeshes(ph);
+      }
+
+      if (networkManager.isLocalPlayer(hs)) {
+        playerPosX = hs.posX;
+      }
+    }
+
+    sceneManager.followTarget(playerPosX);
+
+    const player = this.playerHorse;
+    if (player) {
+      uiManager.updateStaminaBar(player);
+    }
+
+    if (this._netPhase === "racing" && !this._netFinished) {
+      const allHorses = this.horses;
+      uiManager.updateRankings(allHorses);
+    }
+  }
+
+  sendSwipe(dx, dy) {
+    if (!this._isOnline) return;
+    networkManager.sendSwipe(dx, dy);
+  }
+
+  _clearOnlineHorses() {
+    for (const [key, entry] of this._netHorses) {
+      removeHorseMeshes(entry.pseudoHorse);
+    }
+    this._netHorses.clear();
+    raceTrack.clear();
+  }
+
+  get isOnline() {
+    return this._isOnline;
+  }
+
+  // ════════════════════════════════════════════════════════════
+  //  UI 辅助方法
+  // ════════════════════════════════════════════════════════════
+
+  _showLobbyUI() {
+    const el = document.getElementById("online-lobby");
+    el.classList.add("active");
+    // 刷新大厅界面的本地化文本
+    this._refreshLobbyTexts();
+  }
+
+  _refreshLobbyTexts() {
+    const lobby = document.getElementById("online-lobby");
+    lobby.querySelector(".lobby-title").textContent = t("lobbyTitle");
+    document.getElementById("btn-create-room").textContent = t("btnCreateRoom");
+    document.getElementById("btn-refresh-rooms").textContent = t("btnRefresh");
+    document.getElementById("btn-back-lobby").textContent = t("btnBackMenu");
+    // 如果房间列表为空，刷新空提示
+    const empty = lobby.querySelector(".room-empty");
+    if (empty) empty.textContent = t("noRooms");
+  }
+
+  _hideLobbyUI() {
+    document.getElementById("online-lobby").classList.remove("active");
+  }
+
+  _showRoomWaitUI(roomName) {
+    const el = document.getElementById("room-wait");
+    el.classList.add("active");
+    document.getElementById("room-wait-title").textContent = roomName;
+    document.getElementById("room-wait-phase").textContent = t("waitingPlayers");
+    document.getElementById("btn-start-game").textContent = t("btnStartGame");
+    document.getElementById("btn-leave-room").textContent = t("btnLeaveRoom");
+    this._refreshPlayerListUI();
+  }
+
+  _hideRoomWaitUI() {
+    document.getElementById("room-wait").classList.remove("active");
+  }
+
+  _updateRoomListUI(rooms) {
+    const container = document.getElementById("room-list-container");
+    // 只显示 race 类型的房间
+    const lobbyRooms = rooms.filter(r => r.name === "race");
+
+    if (lobbyRooms.length === 0) {
+      container.innerHTML = `<div class="room-empty">${t("noRooms")}</div>`;
+      return;
+    }
+
+    container.innerHTML = lobbyRooms.map(r => `
+      <div class="room-card">
+        <div class="room-info">
+          <div class="room-name">${r.metadata?.roomName || "Room"}</div>
+          <div class="room-players">${t("roomPlayers", { n: r.clients, max: r.maxClients })}</div>
+        </div>
+        <button class="btn-join" data-room-id="${r.roomId}">${t("btnJoin")}</button>
+      </div>
+    `).join("");
+
+    // 绑定加入按钮
+    container.querySelectorAll(".btn-join").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const roomId = btn.getAttribute("data-room-id");
+        this.joinRoom(roomId);
+      });
+    });
+  }
+
+  _refreshPlayerListUI() {
+    if (!networkManager.room) return;
+    const state = networkManager.room.state;
+    const container = document.getElementById("player-list");
+    const myId = networkManager.sessionId;
+
+    let html = "";
+    state.players.forEach((pi, key) => {
+      const isMe = pi.sessionId === myId;
+      const tags = [];
+      if (pi.isHost) tags.push(`<span class="player-tag tag-host">${t("tagHost")}</span>`);
+      if (isMe) tags.push(`<span class="player-tag tag-you">${t("tagYou")}</span>`);
+
+      html += `
+        <div class="player-row">
+          <span class="player-name">${pi.name}</span>
+          <div>${tags.join(" ")}</div>
+        </div>
+      `;
+    });
+
+    container.innerHTML = html;
+
+    // 只有房主显示"开始比赛"按钮
+    const isHost = state.hostId === myId;
+    const btnStart = document.getElementById("btn-start-game");
+    btnStart.style.display = isHost ? "" : "none";
+    btnStart.disabled = false;
+  }
+
+  _showFinishRankToast(text) {
+    const el = document.getElementById("finish-rank-toast");
+    const textEl = document.getElementById("finish-rank-text");
+    textEl.textContent = text;
+    // 重新触发动画
+    textEl.style.animation = "none";
+    textEl.offsetHeight;
+    textEl.style.animation = "";
+    el.classList.add("active");
+  }
+
+  _hideFinishRankToast() {
+    document.getElementById("finish-rank-toast").classList.remove("active");
+  }
+
+  _showOnlineResult(rankings) {
+    const el = document.getElementById("online-result-overlay");
+    const listEl = document.getElementById("online-result-list");
+    const myId = networkManager.sessionId;
+
+    // 查找马匹名字
+    const getHorseName = (key) => {
+      const entry = this._netHorses.get(key);
+      if (entry) {
+        const names = entry.pseudoHorse.appearance?.names || entry.pseudoHorse.appearance?.name;
+        if (names) return getHorseDisplayName(names);
+        return entry.pseudoHorse.name || key;
+      }
+      return key.startsWith("ai_") ? "AI" : key.slice(0, 6);
+    };
+
+    listEl.innerHTML = rankings.map(r => {
+      const isMe = r.key === myId;
+      const rankClass = r.rank === 1 ? "gold" : r.rank === 2 ? "silver" : r.rank === 3 ? "bronze" : "";
+      const name = getHorseName(r.key);
+      const timeStr = r.time.toFixed(2) + "s";
+      const suffix = isMe ? ` (${t("tagYou")})` : "";
+      return `
+        <div class="result-row ${isMe ? "is-me" : ""}">
+          <span class="result-rank ${rankClass}">#${r.rank}</span>
+          <span class="result-name">${name}${suffix}</span>
+          <span class="result-time">${timeStr}</span>
+        </div>
+      `;
+    }).join("");
+
+    el.querySelector(".result-title").textContent = t("raceFinished");
+    el.classList.add("active");
+  }
+
+  _hideOnlineResult() {
+    document.getElementById("online-result-overlay").classList.remove("active");
+  }
+
+  _showCountdown(show) {
+    const el = document.getElementById("countdown-overlay");
+    if (show) {
+      el.classList.add("active");
+    } else {
+      el.classList.remove("active");
+    }
+  }
+
+  _updateCountdownNumber(n) {
+    const el = document.getElementById("countdown-number");
+    const text = n > 0 ? String(n) : "GO!";
+    if (el.textContent !== text) {
+      el.textContent = text;
+      // 重新触发脉冲动画
+      el.style.animation = "none";
+      el.offsetHeight; // force reflow
+      el.style.animation = "";
     }
   }
 }

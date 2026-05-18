@@ -21,9 +21,16 @@
  */
 
 import RAPIER from "@dimforge/rapier2d-compat";
-import * as THREE from "three";
 import { randomHorseNames, HORSE_NAMES_ZH } from "./i18n.js";
 export { RAPIER };
+
+/** 纯数学颜色缩放（替代 THREE.Color.multiplyScalar） */
+function scaleColor(hex, factor) {
+  const r = Math.min(255, ((hex >> 16) & 0xff) * factor) | 0;
+  const g = Math.min(255, ((hex >> 8) & 0xff) * factor) | 0;
+  const b = Math.min(255, (hex & 0xff) * factor) | 0;
+  return (r << 16) | (g << 8) | b;
+}
 
 // ══════════════════════════════════════════════════════════
 //  基因等位基因表（来自原版 genes.xml）
@@ -134,23 +141,23 @@ function randomAppearance() {
   let legColor, hindLegColor, foreLegColor;
   switch (legPattern) {
     case "dark":
-      legColor = new THREE.Color(bodyColor).multiplyScalar(0.5).getHex();
+      legColor = scaleColor(bodyColor, 0.5);
       break;
     case "white_socks":
       legColor = 0xeeeeee;
       break;
     case "gradient":
-      legColor = new THREE.Color(bodyColor).multiplyScalar(0.7).getHex();
+      legColor = scaleColor(bodyColor, 0.7);
       break;
     default: // same
-      legColor = new THREE.Color(bodyColor).multiplyScalar(0.75).getHex();
+      legColor = scaleColor(bodyColor, 0.75);
       break;
   }
 
   // split 花纹时前后腿各自跟对应半身颜色
   if (pattern === "split") {
-    hindLegColor = new THREE.Color(bodyColor).multiplyScalar(0.75).getHex();   // 后半=主色
-    foreLegColor = new THREE.Color(spot2).multiplyScalar(0.75).getHex();       // 前半=第二色
+    hindLegColor = scaleColor(bodyColor, 0.75);   // 后半=主色
+    foreLegColor = scaleColor(spot2, 0.75);       // 前半=第二色
   } else {
     hindLegColor = legColor;
     foreLegColor = legColor;
@@ -158,10 +165,10 @@ function randomAppearance() {
 
   // 鬃毛/尾巴色
   const maneOptions = [
-    new THREE.Color(bodyColor).multiplyScalar(0.3).getHex(), // 深色
+    scaleColor(bodyColor, 0.3), // 深色
     0x222222, // 黑色
     0xeeeecc, // 浅色
-    new THREE.Color(bodyColor).multiplyScalar(0.5).getHex(), // 中间色
+    scaleColor(bodyColor, 0.5), // 中间色
   ];
   const maneColor = maneOptions[Math.floor(Math.random() * maneOptions.length)];
 
