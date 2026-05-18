@@ -16,7 +16,7 @@ import { syncHorseMeshes, rebuildNameLabel } from "./core/HorseRenderer.js";
 import networkManager from "./core/NetworkManager.js";
 
 // ── 服务器地址配置 ──
-const SERVER_URL = "ws://localhost:2567";
+const SERVER_URL = "wss://horse.orixyz.xyz";
 
 // ── 主循环计时器 ──
 let timer;

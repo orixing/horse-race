@@ -182,23 +182,19 @@ class RaceManager {
    * 进入联机大厅
    */
   async enterLobby(serverUrl) {
-    this._isOnline = true;
-    this._serverUrl = serverUrl;
-
-    uiManager.hideMenu();
-    this.inMenu = false;
-
-    // 注册房间列表更新回调
+    this._showLoading();
     networkManager.onRoomsUpdate((rooms) => this._updateRoomListUI(rooms));
-
-    // 连接大厅
     const ok = await networkManager.connectLobby(serverUrl);
+    this._hideLoading();
     if (!ok) {
       alert(t("connectLobbyFailed"));
-      this.resetRace();
       return;
     }
 
+    this._isOnline = true;
+    this._serverUrl = serverUrl;
+    uiManager.hideMenu();
+    this.inMenu = false;
     this._showLobbyUI();
   }
 
@@ -214,9 +210,10 @@ class RaceManager {
       options.horseData = saved;
     }
 
+    this._showLoading();
     this._setupRoomCallbacks();
-
     const ok = await networkManager.createRoom(options);
+    this._hideLoading();
     if (!ok) {
       alert(t("createRoomFailed"));
       return;
@@ -266,9 +263,10 @@ class RaceManager {
       options.horseData = saved;
     }
 
+    this._showLoading();
     this._setupRoomCallbacks();
-
     const ok = await networkManager.joinRoom(roomId, options);
+    this._hideLoading();
     if (!ok) {
       alert(t("joinRoomFailed"));
       return;
@@ -692,6 +690,14 @@ class RaceManager {
 
   _hideOnlineResult() {
     document.getElementById("online-result-overlay").classList.remove("active");
+  }
+
+  _showLoading() {
+    document.getElementById("loading-mask").classList.add("active");
+  }
+
+  _hideLoading() {
+    document.getElementById("loading-mask").classList.remove("active");
   }
 
   _showCountdown(show) {
