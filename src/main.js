@@ -60,6 +60,40 @@ async function init() {
     raceManager.startGameMode("tame");
   });
 
+  // 马厩
+  document.getElementById("btn-stable").addEventListener("click", (e) => {
+    e.stopPropagation();
+    raceManager.openStable();
+  });
+
+  // 马厩返回
+  document.getElementById("btn-stable-back").addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (raceManager._makeRoomMode) {
+      raceManager.abandonNewHorse();
+    } else {
+      raceManager.closeStable();
+    }
+  });
+
+  // 马匹详情 — 出战
+  document.getElementById("detail-btn-active").addEventListener("click", (e) => {
+    e.stopPropagation();
+    raceManager._detailSetActive();
+  });
+
+  // 马匹详情 — 放生
+  document.getElementById("detail-btn-release").addEventListener("click", (e) => {
+    e.stopPropagation();
+    raceManager._detailRelease();
+  });
+
+  // 马匹详情 — 返回
+  document.getElementById("detail-btn-close").addEventListener("click", (e) => {
+    e.stopPropagation();
+    raceManager._closeHorseDetail();
+  });
+
   // 本地赛马
   document.getElementById("btn-race").addEventListener("click", (e) => {
     e.stopPropagation();
@@ -121,7 +155,13 @@ async function init() {
   document.getElementById("btn-keep").addEventListener("click", (e) => {
     e.stopPropagation();
     if (raceManager.playerHorse) {
-      horseDataManager.saveHorse(raceManager.playerHorse);
+      const slot = horseDataManager.saveHorse(raceManager.playerHorse);
+      if (slot < 0) {
+        // 马厩已满，进入腾位模式
+        alert(t("stableFull"));
+        raceManager.enterMakeRoomMode(raceManager.playerHorse);
+        return;
+      }
     }
     raceManager.resetRace();
   });
@@ -152,6 +192,12 @@ async function init() {
   document.getElementById("btn-online-back").addEventListener("click", (e) => {
     e.stopPropagation();
     raceManager.resetRace();
+  });
+
+  // 返回主界面按钮（左上角，游戏中显示）
+  document.getElementById("btn-back-home").addEventListener("click", (e) => {
+    e.stopPropagation();
+    raceManager.tryGoHome();
   });
 
   // 语言切换

@@ -8,6 +8,7 @@
 
 import { GameSimulation } from "./GameSimulation.js";
 import { build3DHorse, removeHorseMeshes, syncHorseMeshes, fadeOutPlayerIndicator } from "./HorseRenderer.js";
+import { renderHorsePreview } from "./HorsePreview.js";
 import horseDataManager from "./HorseDataManager.js";
 import networkManager from "./NetworkManager.js";
 import raceTrack from "./RaceTrack.js";
@@ -40,6 +41,10 @@ class RaceManager {
     this._netPhase = "lobby";
     this._netFinished = false;
     this._netPlayerKey = null;
+
+    // ── 腾位模式 ──
+    this._makeRoomMode = false;
+    this._pendingHorse = null; // 暂存的新马 (horse 对象)
   }
 
   // ── 代理属性 ──
@@ -91,6 +96,7 @@ class RaceManager {
 
     uiManager.hideMenu();
     this.inMenu = false;
+    this._showBackButton();
 
     if (mode === "race") {
       debugRenderer.setVisible(false);
@@ -118,8 +124,24 @@ class RaceManager {
 
     const result = this.sim.checkFinish();
     if (result.finished) {
+      // AI 赛马模式记录成绩
+      if (this.sim.gameMode === "race") {
+        const activeSlot = horseDataManager.getActiveSlot();
+        if (activeSlot >= 0 && this.sim.playerHorse) {
+          const sorted = [...this.sim.horses].sort((a, b) => b.posX - a.posX);
+          const rank = sorted.indexOf(this.sim.playerHorse) + 1;
+          horseDataManager.addRaceResult(activeSlot, rank === 1, rank);
+        }
+      }
       uiManager.showFinishOverlay(this.sim.gameMode, this.sim.horses, this.sim.playerHorse);
     }
+  }
+
+  /**
+   * 点击返回按钮：比赛中弹确认，其他阶段直接返回
+   */
+  tryGoHome() {
+    this.resetRace();
   }
 
   resetRace() {
@@ -135,6 +157,8 @@ class RaceManager {
     this._hideOnlineResult();
     this._hideLobbyUI();
     this._hideRoomWaitUI();
+    this._hideStableUI();
+    this._hideBackButton();
     this._clearRendering();
     this.sim.cleanup();
     this.inMenu = true;
@@ -374,6 +398,7 @@ class RaceManager {
     if (phase === "countdown") {
       // 倒计时开始，切换到游戏渲染界面
       this._hideRoomWaitUI();
+      this._showBackButton();
       debugRenderer.setVisible(false);
       uiManager.setRaceModeUI();
 
@@ -421,6 +446,16 @@ class RaceManager {
   _onNetRaceResult(data) {
     this._netFinished = true;
     this._hideFinishRankToast();
+
+    // 联机模式记录成绩
+    const activeSlot = horseDataManager.getActiveSlot();
+    if (activeSlot >= 0 && networkManager.sessionId) {
+      const myResult = data.rankings.find(r => r.key === networkManager.sessionId);
+      if (myResult && myResult.time >= 0) { // time < 0 是放弃，不算出战
+        horseDataManager.addRaceResult(activeSlot, myResult.rank === 1, myResult.rank);
+      }
+    }
+
     this._showOnlineResult(data.rankings);
   }
 
@@ -709,7 +744,7 @@ class RaceManager {
       const isMe = r.key === myId;
       const rankClass = r.rank === 1 ? "gold" : r.rank === 2 ? "silver" : r.rank === 3 ? "bronze" : "";
       const name = getHorseName(r.key);
-      const timeStr = r.time.toFixed(2) + "s";
+      const timeStr = r.time < 0 ? t("abandoned") : r.time.toFixed(2) + "s";
       const suffix = isMe ? ` (${t("tagYou")})` : "";
       return `
         <div class="result-row ${isMe ? "is-me" : ""}">
@@ -726,6 +761,16 @@ class RaceManager {
 
   _hideOnlineResult() {
     document.getElementById("online-result-overlay").classList.remove("active");
+  }
+
+  _showBackButton() {
+    const btn = document.getElementById("btn-back-home");
+    btn.style.display = "block";
+    btn.textContent = t("btnBackHome");
+  }
+
+  _hideBackButton() {
+    document.getElementById("btn-back-home").style.display = "none";
   }
 
   _showLoading() {
@@ -750,11 +795,227 @@ class RaceManager {
     const text = n > 0 ? String(n) : "GO!";
     if (el.textContent !== text) {
       el.textContent = text;
-      // 重新触发脉冲动画
       el.style.animation = "none";
-      el.offsetHeight; // force reflow
+      el.offsetHeight;
       el.style.animation = "";
     }
+  }
+
+  // ════════════════════════════════════════════════════════════
+  //  马厩界面
+  // ════════════════════════════════════════════════════════════
+
+  openStable() {
+    uiManager.hideMenu();
+    this._makeRoomMode = false;
+    this._pendingHorse = null;
+    this._showStableUI();
+  }
+
+  closeStable() {
+    this._makeRoomMode = false;
+    this._pendingHorse = null;
+    this._hideStableUI();
+    uiManager.showMenu();
+  }
+
+  /**
+   * 进入腾位模式：马厩已满，暂存新马，让玩家放生一匹
+   */
+  enterMakeRoomMode(horse) {
+    this._makeRoomMode = true;
+    this._pendingHorse = horse;
+    // 先清理驯服场景
+    uiManager.hideFinishOverlay();
+    this._hideBackButton();
+    this._clearRendering();
+    this.sim.cleanup();
+    this.inMenu = false;
+    // 打开马厩（腾位模式）
+    this._showStableUI();
+  }
+
+  /**
+   * 放弃新马并返回主界面
+   */
+  abandonNewHorse() {
+    this._makeRoomMode = false;
+    this._pendingHorse = null;
+    this._hideStableUI();
+    this.inMenu = true;
+    uiManager.showMenu();
+  }
+
+  _showStableUI() {
+    const el = document.getElementById("stable-screen");
+    el.classList.add("active");
+    el.querySelector(".stable-title").textContent = t("btnStable");
+
+    if (this._makeRoomMode) {
+      el.querySelector(".stable-subtitle").textContent = t("stableMakeRoom");
+      document.getElementById("btn-stable-back").textContent = t("stableAbandonNew");
+    } else {
+      el.querySelector(".stable-subtitle").textContent = t("stableSelectHint");
+      document.getElementById("btn-stable-back").textContent = t("btnBackMenu");
+    }
+
+    this._refreshStableGrid();
+  }
+
+  _hideStableUI() {
+    document.getElementById("stable-screen").classList.remove("active");
+  }
+
+
+  _refreshStableGrid() {
+    const grid = document.getElementById("stable-grid");
+    const stable = horseDataManager.getStable();
+    const activeSlot = horseDataManager.getActiveSlot();
+
+    grid.innerHTML = stable.map((data, i) => {
+      if (data) {
+        const name = typeof data.appearanceName === "object"
+          ? getHorseDisplayName(data.appearanceName)
+          : (data.appearanceName || data.name || "???");
+        const isActive = i === activeSlot;
+        return `
+          <div class="stable-slot ${isActive ? "is-active" : ""}" data-slot="${i}">
+            <span class="slot-index">#${i + 1}</span>
+            ${isActive ? `<span class="slot-active-badge">${t("stableActive")}</span>` : ""}
+            <div class="slot-canvas-wrap"><canvas class="slot-horse-canvas" data-horse-idx="${i}"></canvas></div>
+            <div class="slot-horse-name">${name}</div>
+            <button class="slot-manage-btn" data-slot="${i}">${t("stableManage")}</button>
+          </div>
+        `;
+      } else {
+        return `
+          <div class="stable-slot is-empty" data-slot="${i}">
+            <span class="slot-index">#${i + 1}</span>
+            <div class="slot-empty-icon">+</div>
+            <div class="slot-empty-text">${t("stableEmpty")}</div>
+          </div>
+        `;
+      }
+    }).join("");
+
+    // 绘制马匹3D预览
+    grid.querySelectorAll("canvas.slot-horse-canvas").forEach(canvas => {
+      const idx = parseInt(canvas.getAttribute("data-horse-idx"), 10);
+      const data = stable[idx];
+      if (data) renderHorsePreview(canvas, data);
+    });
+
+    // 绑定管理按钮
+    grid.querySelectorAll(".slot-manage-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const slot = parseInt(btn.getAttribute("data-slot"), 10);
+        this._openHorseDetail(slot);
+      });
+    });
+  }
+
+  // ════════════════════════════════════════════════════════════
+  //  马匹详情面板
+  // ════════════════════════════════════════════════════════════
+
+  _openHorseDetail(slotIndex) {
+    this._detailSlot = slotIndex;
+    const data = horseDataManager.getSlot(slotIndex);
+    if (!data) return;
+
+    const panel = document.getElementById("horse-detail-panel");
+
+    // 名字（可编辑输入框）
+    const name = typeof data.appearanceName === "object"
+      ? getHorseDisplayName(data.appearanceName)
+      : (data.appearanceName || data.name || "???");
+    const nameInput = document.getElementById("detail-horse-name");
+    nameInput.value = name;
+    document.getElementById("detail-slot-label").textContent = t("stableSlot", { n: slotIndex + 1 });
+
+    // 绑定名字保存（blur 和回车）
+    if (!nameInput._boundSave) {
+      const saveName = () => {
+        const v = nameInput.value.trim();
+        if (v && this._detailSlot !== undefined) {
+          horseDataManager.updateHorseName(this._detailSlot, v);
+        }
+      };
+      nameInput.addEventListener("blur", saveName);
+      nameInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); saveName(); nameInput.blur(); }
+      });
+      nameInput._boundSave = true;
+    }
+
+    // 属性
+    const bestRankStr = data.bestRank !== undefined ? `#${data.bestRank}` : t("stableNoBest");
+    const stats = [
+      { label: t("stableInfoRaces"), value: data.raceCount || 0 },
+      { label: t("stableInfoWins"), value: data.winCount || 0 },
+      { label: t("stableInfoBest"), value: bestRankStr },
+    ];
+    document.getElementById("detail-stats").innerHTML = stats.map(s => `
+      <div class="detail-stat-row">
+        <span class="detail-stat-label">${s.label}</span>
+        <span class="detail-stat-value">${s.value}</span>
+      </div>
+    `).join("");
+
+    // 按钮文字
+    const isActive = horseDataManager.getActiveSlot() === slotIndex;
+    const btnActive = document.getElementById("detail-btn-active");
+    btnActive.textContent = isActive ? t("stableActive") : t("stableSetActive");
+    btnActive.disabled = isActive;
+    btnActive.style.opacity = isActive ? "0.5" : "1";
+
+    document.getElementById("detail-btn-release").textContent = t("stableRelease");
+    document.getElementById("detail-btn-close").textContent = t("stableClose");
+
+    // 3D 预览
+    const canvas = document.getElementById("detail-preview-canvas");
+    renderHorsePreview(canvas, data);
+
+    panel.classList.add("active");
+  }
+
+  _closeHorseDetail() {
+    // 关闭前保存名字
+    const nameInput = document.getElementById("detail-horse-name");
+    const v = nameInput.value.trim();
+    if (v && this._detailSlot !== undefined) {
+      horseDataManager.updateHorseName(this._detailSlot, v);
+      this._refreshStableGrid(); // 刷新马厩显示新名字
+    }
+    document.getElementById("horse-detail-panel").classList.remove("active");
+  }
+
+  _detailSetActive() {
+    if (this._detailSlot === undefined) return;
+    horseDataManager.setActiveSlot(this._detailSlot);
+    this._closeHorseDetail();
+    this._refreshStableGrid();
+  }
+
+  _detailRelease() {
+    if (this._detailSlot === undefined) return;
+    if (!confirm(t("stableReleaseConfirm"))) return;
+    horseDataManager.removeHorse(this._detailSlot);
+    this._closeHorseDetail();
+
+    // 腾位模式：放生后自动存入新马
+    if (this._makeRoomMode && this._pendingHorse) {
+      const slot = horseDataManager.saveHorse(this._pendingHorse);
+      this._makeRoomMode = false;
+      this._pendingHorse = null;
+      // 更新提示文字和按钮
+      const el = document.getElementById("stable-screen");
+      el.querySelector(".stable-subtitle").textContent = t("stableSelectHint");
+      document.getElementById("btn-stable-back").textContent = t("btnBackMenu");
+    }
+
+    this._refreshStableGrid();
   }
 }
 

@@ -417,6 +417,244 @@
       border: 1px solid rgba(255,255,255,0.3) !important;
     }
 
+    /* ── 马厩界面 ── */
+    #stable-screen {
+      display: none;
+      position: fixed; inset: 0;
+      background:
+        repeating-linear-gradient(90deg, rgba(80,50,20,0.15) 0px, transparent 2px, transparent 60px),
+        linear-gradient(180deg, #3a2210 0%, #5a3a1a 30%, #4a2e14 70%, #2a1a0a 100%);
+      z-index: 200;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 30px;
+      color: #fff;
+      overflow-y: auto;
+    }
+    #stable-screen.active { display: flex; }
+    .stable-title {
+      font-size: 2.4rem; font-weight: 900;
+      color: #ffcc66;
+      text-shadow: 0 2px 12px rgba(255,200,80,0.4), 0 1px 0 #aa7722;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+    .stable-subtitle {
+      font-size: 0.85rem; color: rgba(255,220,150,0.5);
+      margin-bottom: 20px;
+    }
+    #stable-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      width: 92%; max-width: 560px;
+      margin-bottom: 24px;
+    }
+    .stable-slot {
+      aspect-ratio: 3/4;
+      border-radius: 6px;
+      border: 3px solid #6b4422;
+      background:
+        linear-gradient(180deg, #5a3a1a 0%, #3a2210 60%, #2a1808 100%);
+      box-shadow: inset 0 2px 8px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.3);
+      display: flex; flex-direction: column;
+      justify-content: flex-end; align-items: center;
+      cursor: pointer;
+      transition: border-color 0.15s, box-shadow 0.15s, transform 0.12s;
+      position: relative;
+      padding: 6px 4px 8px;
+      overflow: hidden;
+    }
+    .stable-slot::before {
+      content: "";
+      position: absolute; top: 0; left: 0; right: 0;
+      height: 6px;
+      background: linear-gradient(90deg, #8b6633, #aa8844, #8b6633);
+      border-radius: 3px 3px 0 0;
+    }
+    .stable-slot:hover {
+      border-color: #aa8844;
+      box-shadow: inset 0 2px 8px rgba(0,0,0,0.4), 0 0 12px rgba(255,200,80,0.2);
+      transform: translateY(-2px);
+    }
+    .stable-slot.is-active {
+      border-color: #ffcc66;
+      box-shadow: inset 0 2px 8px rgba(0,0,0,0.3), 0 0 20px rgba(255,200,80,0.4);
+    }
+    .stable-slot.is-active::before {
+      background: linear-gradient(90deg, #ffcc44, #ffdd88, #ffcc44);
+    }
+    .stable-slot.is-empty {
+      cursor: default;
+      opacity: 0.5;
+    }
+    .stable-slot.is-empty:hover {
+      border-color: #6b4422;
+      box-shadow: inset 0 2px 8px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.3);
+      transform: none;
+    }
+    .slot-empty-icon {
+      font-size: 1.8rem; color: rgba(255,220,150,0.15);
+      margin-bottom: 8px;
+    }
+    .slot-empty-text {
+      font-size: 0.7rem; color: rgba(255,220,150,0.25);
+    }
+    .slot-canvas-wrap {
+      width: 80%; aspect-ratio: 1/1;
+      overflow: hidden;
+      border-radius: 4px;
+      margin: 4px auto 2px;
+    }
+    .slot-horse-canvas {
+      width: 100%; height: 100%;
+      display: block;
+    }
+    .slot-horse-name {
+      font-size: 0.75rem; font-weight: bold;
+      text-align: center;
+      color: #ffddaa;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+    }
+    .slot-active-badge {
+      position: absolute; top: 10px; right: 4px;
+      font-size: 0.6rem; font-weight: bold;
+      background: #ffcc66; color: #333;
+      padding: 1px 5px; border-radius: 3px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .slot-index {
+      position: absolute; top: 10px; left: 5px;
+      font-size: 0.6rem; color: rgba(255,220,150,0.3);
+    }
+    .slot-manage-btn {
+      margin-top: 4px;
+      padding: 3px 0; width: 100%;
+      font-size: 0.65rem; font-weight: bold;
+      color: #ffddaa; background: rgba(255,200,80,0.15);
+      border: 1px solid rgba(255,200,80,0.3);
+      border-radius: 4px; cursor: pointer;
+      transition: background 0.12s;
+    }
+    .slot-manage-btn:hover { background: rgba(255,200,80,0.3); }
+    .stable-actions {
+      margin-bottom: 30px;
+    }
+    .stable-actions .btn-stable-back {
+      padding: 10px 36px;
+      font-size: 1rem; font-weight: bold;
+      color: #ffddaa;
+      background: linear-gradient(135deg, #6b4422, #8b6633);
+      border: 1.5px solid #aa8844;
+      border-radius: 10px;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      transition: transform 0.12s, filter 0.12s;
+    }
+    .stable-actions .btn-stable-back:hover {
+      transform: translateY(-2px);
+      filter: brightness(1.15);
+    }
+    .stable-actions .btn-stable-back:active {
+      transform: translateY(0);
+    }
+
+    /* ── 马匹详情面板 ── */
+    #horse-detail-panel {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 210;
+      justify-content: center; align-items: center;
+      backdrop-filter: blur(4px);
+    }
+    #horse-detail-panel.active { display: flex; }
+    .detail-card {
+      width: 90%; max-width: 360px;
+      background: linear-gradient(180deg, #4a3018 0%, #3a2210 100%);
+      border: 2px solid #8b6633;
+      border-radius: 14px;
+      padding: 20px;
+      color: #fff;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+      max-height: 85vh;
+      overflow-y: auto;
+    }
+    .detail-preview-wrap {
+      width: 60%; aspect-ratio: 3/2;
+      margin: 0 auto 12px;
+      border-radius: 8px;
+      background: rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    .detail-preview {
+      width: 100%; height: 100%;
+      display: block;
+    }
+    .detail-name-input {
+      display: block;
+      width: 70%; margin: 0 auto 4px;
+      font-size: 1.3rem; font-weight: 900;
+      color: #ffcc66;
+      text-align: center;
+      background: rgba(255,200,80,0.08);
+      border: 1.5px solid rgba(255,200,80,0.25);
+      border-radius: 6px;
+      padding: 4px 8px;
+      outline: none;
+    }
+    .detail-name-input:focus {
+      border-color: rgba(255,200,80,0.6);
+      background: rgba(255,200,80,0.15);
+    }
+    .detail-slot-label {
+      font-size: 0.8rem; color: rgba(255,220,150,0.5);
+      text-align: center;
+      margin-bottom: 14px;
+    }
+    .detail-stats {
+      margin-bottom: 16px;
+    }
+    .detail-stat-row {
+      display: flex; justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      font-size: 0.9rem;
+    }
+    .detail-stat-label { color: rgba(255,220,150,0.6); }
+    .detail-stat-value { color: #ffddaa; font-weight: bold; }
+    .detail-actions {
+      display: flex; gap: 10px; margin-top: 8px;
+    }
+    .detail-btn {
+      flex: 1; padding: 10px 0;
+      font-size: 0.95rem; font-weight: bold;
+      border: none; border-radius: 8px;
+      cursor: pointer;
+      transition: transform 0.12s, filter 0.12s;
+    }
+    .detail-btn:hover { transform: translateY(-1px); filter: brightness(1.1); }
+    .detail-btn:active { transform: translateY(0); }
+    .detail-btn-active {
+      background: linear-gradient(135deg, #ffcc44, #ffaa22);
+      color: #333;
+    }
+    .detail-btn-release {
+      background: rgba(255,80,80,0.2);
+      color: #ff8888;
+      border: 1px solid rgba(255,80,80,0.3);
+    }
+    .detail-btn-close {
+      background: rgba(255,255,255,0.1);
+      color: #ccc;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+
     /* ── 网络请求遮罩 ── */
     #loading-mask {
       display: none;
@@ -520,8 +758,28 @@
     }
 
     /* ── 语言切换按钮 ── */
-    #lang-toggle {
+    #btn-back-home {
+      display: none;
       position: fixed; top: 14px; right: 14px;
+      z-index: 250;
+      padding: 6px 16px;
+      font-size: 0.9rem; font-weight: bold;
+      color: #fff;
+      background: rgba(0,0,0,0.45);
+      border: 1.5px solid rgba(255,255,255,0.35);
+      border-radius: 8px;
+      cursor: pointer;
+      backdrop-filter: blur(4px);
+      transition: background 0.15s, border-color 0.15s, transform 0.1s;
+    }
+    #btn-back-home:hover {
+      background: rgba(0,0,0,0.65);
+      border-color: rgba(255,255,255,0.6);
+      transform: scale(1.05);
+    }
+    #btn-back-home:active { transform: scale(0.97); }
+    #lang-toggle {
+      position: fixed; top: 48px; right: 14px;
       z-index: 250;
       padding: 6px 16px;
       font-size: 0.9rem; font-weight: bold;
@@ -549,6 +807,9 @@
   <!-- 语言切换按钮 -->
   <button id="lang-toggle">EN</button>
 
+  <!-- 返回主界面按钮（游戏中显示） -->
+  <button id="btn-back-home" data-i18n="btnBackHome">返回</button>
+
   <!-- 主界面 -->
   <div id="main-menu">
     <div class="horse-emoji">🏇</div>
@@ -557,11 +818,43 @@
     <button class="menu-btn" id="btn-practice" data-i18n="btnPractice">驯服野马</button>
     <div class="menu-note" data-i18n="practiceNote">尝试捕获新的随机马匹</div>
     <div style="height:20px"></div>
+    <button class="menu-btn" id="btn-stable" style="background:linear-gradient(135deg,#aa7733,#886622);box-shadow:0 4px 15px rgba(150,100,30,0.4)" data-i18n="btnStable">我的马厩</button>
+    <div class="menu-note" data-i18n="stableNote">管理我捕获的马匹</div>
+    <div style="height:20px"></div>
     <button class="menu-btn race-btn" id="btn-race" data-i18n="btnRace">开始赛马</button>
-    <div class="menu-note" id="race-note" data-i18n="raceNote">使用捕获的马匹参赛</div>
+    <div class="menu-note" id="race-note" data-i18n="raceNote">与人机一较高下</div>
     <div style="height:20px"></div>
     <button class="menu-btn" id="btn-online" style="background:linear-gradient(135deg,#6633ff,#3366ff);box-shadow:0 4px 15px rgba(50,80,255,0.4)" data-i18n="btnOnline">联机赛马</button>
     <div class="menu-note" data-i18n="onlineNote">与其他玩家实时对战</div>
+  </div>
+
+  <!-- 马厩界面 -->
+  <div id="stable-screen">
+    <div class="stable-title" data-i18n="btnStable">我的马厩</div>
+    <div class="stable-subtitle" data-i18n="stableSelectHint">点击马匹设为出战</div>
+    <div id="stable-grid"></div>
+    <div class="stable-actions">
+      <button class="btn-stable-back" id="btn-stable-back" data-i18n="btnBackMenu">返回主界面</button>
+    </div>
+  </div>
+
+  <!-- 马匹详情面板 -->
+  <div id="horse-detail-panel">
+    <div class="detail-card">
+      <div class="detail-preview-wrap">
+        <canvas class="detail-preview" id="detail-preview-canvas"></canvas>
+      </div>
+      <input type="text" class="detail-name-input" id="detail-horse-name" maxlength="12">
+      <div class="detail-slot-label" id="detail-slot-label"></div>
+      <div class="detail-stats" id="detail-stats"></div>
+      <div class="detail-actions">
+        <button class="detail-btn detail-btn-active" id="detail-btn-active"></button>
+        <button class="detail-btn detail-btn-release" id="detail-btn-release"></button>
+      </div>
+      <div class="detail-actions" style="margin-top:6px">
+        <button class="detail-btn detail-btn-close" id="detail-btn-close"></button>
+      </div>
+    </div>
   </div>
 
   <!-- 网络请求遮罩 -->

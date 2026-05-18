@@ -139,16 +139,22 @@ export class RaceRoom extends Room {
         playerCount: this.state.players.size,
       });
     } else {
-      // 比赛中：AI 接管
+      // 比赛中：玩家离开，标记放弃，不等其冲线
       const idx = this._horseKeys.indexOf(client.sessionId);
       if (idx >= 0 && this._horses[idx]) {
-        this._horses[idx].isAI = true;
+        this._horses[idx].running = false;
         this._horses[idx].isPlayer = false;
-        const hs = this.state.horses.get(client.sessionId);
-        if (hs) {
-          hs.isAI = true;
-          hs.isPlayer = false;
+
+        if (!this._finishedSet.has(idx)) {
+          this._finishedSet.add(idx);
+          // 标记为放弃（time = -1 表示放弃）
+          const key = this._horseKeys[idx];
+          this._abandonedKeys = this._abandonedKeys || new Set();
+          this._abandonedKeys.add(key);
         }
+
+        // 检查是否所有马都冲线或放弃了
+        this._checkAllFinished();
       }
     }
   }
@@ -392,22 +398,38 @@ export class RaceRoom extends Room {
         if (horse.posX >= this.state.finishX) {
           this._finishedSet.add(i);
           const rank = this._rankings.length + 1;
-          const time = (now - this._raceStartTime) / 1000; // 秒
+          const time = (now - this._raceStartTime) / 1000;
           const key = this._horseKeys[i];
           this._rankings.push({ rank, key, time });
-
-          // 通知单匹马冲线
           this.broadcast("horseFinished", { rank, key, time });
         }
       }
 
-      // 所有马都冲线了 → 比赛结束
-      if (this._finishedSet.size >= this._horses.length) {
-        this._raceFinished = true;
-        this.state.phase = "finished";
-        this.broadcast("raceResult", { rankings: this._rankings });
+      this._checkAllFinished();
+    }
+  }
+
+  _checkAllFinished() {
+    if (this._raceFinished) return;
+    if (this._finishedSet.size < this._horses.length) return;
+
+    this._raceFinished = true;
+    this.state.phase = "finished";
+
+    // 放弃的玩家追加到排名末尾，time = -1
+    const abandoned = this._abandonedKeys || new Set();
+    for (let i = 0; i < this._horses.length; i++) {
+      const key = this._horseKeys[i];
+      if (abandoned.has(key) && !this._rankings.find(r => r.key === key)) {
+        this._rankings.push({
+          rank: this._rankings.length + 1,
+          key,
+          time: -1,
+        });
       }
     }
+
+    this.broadcast("raceResult", { rankings: this._rankings });
   }
 
   // ════════════════════════════════════════════════════════════

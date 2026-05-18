@@ -40,15 +40,10 @@ export function build3DHorse(horse) {
     const group = new THREE.Group();
     group.add(new THREE.Mesh(new THREE.BoxGeometry(horse.bodyW, horse.bodyH, 0.5), mat));
     const spotMat = new THREE.MeshStandardMaterial({ color: ap.spotColor });
-    const spotCount = 3 + Math.floor(Math.random() * 4);
-    for (let i = 0; i < spotCount; i++) {
-      const sz = 0.04 + Math.random() * 0.08;
-      const spot = new THREE.Mesh(new THREE.BoxGeometry(sz, sz, 0.52), spotMat);
-      spot.position.set(
-        (Math.random() - 0.5) * horse.bodyW * 0.8,
-        (Math.random() - 0.5) * horse.bodyH * 0.6,
-        0
-      );
+    const spotsData = ap.spots || [];
+    for (const s of spotsData) {
+      const spot = new THREE.Mesh(new THREE.BoxGeometry(s.sz, s.sz, 0.52), spotMat);
+      spot.position.set(s.x * horse.bodyW, s.y * horse.bodyH, 0);
       group.add(spot);
     }
     m.body = group;

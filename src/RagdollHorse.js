@@ -175,7 +175,21 @@ function randomAppearance() {
   // 鼻子色
   const noseColor = Math.random() > 0.5 ? 0x332211 : 0xffccaa;
 
-  return { bodyColor, legColor, hindLegColor, foreLegColor, maneColor, noseColor, riderColor, name, names, pattern, spotColor: spot2 };
+  // 预生成斑点数据（spots花纹用）
+  let spots = null;
+  if (pattern === "spots") {
+    const spotCount = 3 + Math.floor(Math.random() * 4);
+    spots = [];
+    for (let i = 0; i < spotCount; i++) {
+      spots.push({
+        x: (Math.random() - 0.5) * 0.8,  // 归一化坐标 (-0.4 ~ 0.4)
+        y: (Math.random() - 0.5) * 0.6,
+        sz: 0.04 + Math.random() * 0.08,
+      });
+    }
+  }
+
+  return { bodyColor, legColor, hindLegColor, foreLegColor, maneColor, noseColor, riderColor, name, names, pattern, spotColor: spot2, spots };
 }
 
 export { randomAppearance, HORSE_NAMES };
