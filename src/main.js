@@ -8,6 +8,7 @@ import * as THREE from "three";
 import GUI from "lil-gui";
 import { RagdollHorse, randomGenome, defaultGenome, fastGenome } from "./RagdollHorse.js";
 import horsePool from "./horsePool.json";
+import { t, getLang, toggleLang, onLangChange, getHorseDisplayName } from "./i18n.js";
 
 // ── 开发模式/发布模式 ──
 const DEV_MODE = true; // true=开发模式（完全随机+保存按钮），false=发布模式（从池子抽马）
@@ -63,7 +64,7 @@ const config = {
 
 async function init() {
   const info = document.getElementById("info");
-  info.textContent = "正在加载...";
+  info.textContent = t("loadingProgress");
 
   await RAPIER.init();
   info.textContent = "";
@@ -79,7 +80,7 @@ async function init() {
     e.stopPropagation();
     const saved = localStorage.getItem("savedHorse");
     if (!saved) {
-      alert("请先去捕捉你的马匹！");
+      alert(t("alertNoHorse"));
       return;
     }
     startGameMode("race");
@@ -121,6 +122,31 @@ async function init() {
     resetRace();
   });
 
+  // 语言切换按钮
+  const langBtn = document.getElementById("lang-toggle");
+  langBtn.textContent = t("langSwitch");
+  langBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleLang();
+  });
+
+  // 监听语言变化 → 更新所有静态UI文本
+  onLangChange(() => {
+    updateStaticUI();
+    // 强制刷新马匹名牌（需要重建3D名牌纹理）
+    for (const horse of horses) {
+      if (horse.meshes?.nameLabel) {
+        rebuildNameLabel(horse);
+      }
+    }
+    // 强制刷新属性面板
+    const statsDiv = document.getElementById("horse-stats");
+    if (statsDiv) statsDiv._lastHtml = null;
+  });
+
+  // 初始化静态UI文本
+  updateStaticUI();
+
   // 滑动施力
   setupSwipe(document.getElementById("canvas3d"));
 
@@ -131,6 +157,57 @@ async function init() {
   setupGUI();
 
   requestAnimationFrame(animate);
+}
+
+// ════════════════════════════════════════════════════════════
+//  国际化 — 更新所有静态UI文本
+// ════════════════════════════════════════════════════════════
+function updateStaticUI() {
+  // 更新页面标题
+  document.title = t("pageTitle");
+  document.getElementById("html-root").lang = getLang() === "zh" ? "zh" : "en";
+
+  // 更新语言切换按钮
+  const langBtn = document.getElementById("lang-toggle");
+  if (langBtn) langBtn.textContent = t("langSwitch");
+
+  // 更新所有 data-i18n 标记的元素
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    const key = el.getAttribute("data-i18n");
+    el.textContent = t(key);
+  });
+
+  // 更新 info 区域（根据当前状态）
+  const info = document.getElementById("info");
+  if (info && inMenu) {
+    info.textContent = t("loading");
+  }
+}
+
+/** 重建马匹3D名牌（语言切换时调用）*/
+function rebuildNameLabel(horse) {
+  if (!horse.meshes?.nameLabel) return;
+  // 移除旧名牌
+  scene.remove(horse.meshes.nameLabel);
+  horse.meshes.nameLabel.geometry.dispose();
+  horse.meshes.nameLabel.material.map?.dispose();
+  horse.meshes.nameLabel.material.dispose();
+
+  // 创建新名牌
+  const displayName = getHorseDisplayName(horse.appearance.name);
+  const nameCanvas = document.createElement("canvas");
+  nameCanvas.width = 512; nameCanvas.height = 32;
+  const nc = nameCanvas.getContext("2d");
+  nc.fillStyle = horse.isPlayer ? "#ffdd44" : "#ffffff";
+  nc.font = "bold 14px monospace"; nc.textAlign = "center";
+  nc.fillText(displayName, 256, 22);
+  const nameTex = new THREE.CanvasTexture(nameCanvas);
+  horse.meshes.nameLabel = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.0, 0.2),
+    new THREE.MeshBasicMaterial({ map: nameTex, transparent: true, depthTest: false })
+  );
+  horse.meshes.nameLabel.renderOrder = 999;
+  scene.add(horse.meshes.nameLabel);
 }
 
 // ════════════════════════════════════════════════════════════
@@ -205,7 +282,7 @@ function startGameMode(mode) {
   document.getElementById("main-menu").classList.add("hidden");
   inMenu = false;
   raceFinished = false;
-  info.textContent = "点击屏幕开始";
+  info.textContent = t("tapToStart");
 
   // 赛马模式：隐藏调试面板和马匹信息
   if (mode === "race") {
@@ -291,7 +368,7 @@ function setupSwipe(canvas) {
 
     // 调试：显示滑动信息
     const dbg = document.getElementById("info");
-    if (dbg) dbg.textContent = `滑动 len=${len.toFixed(0)} stamina=${playerHorse?.stamina?.toFixed(2)||"?"} player=${!!playerHorse}`;
+    if (dbg) dbg.textContent = t("swipeInfo", { len: len.toFixed(0), stamina: playerHorse?.stamina?.toFixed(2)||"?", player: !!playerHorse });
 
     if (len > 15 && playerHorse && playerHorse.stamina > 0.01) {
       playerHorse.applyStamina(dx / len, -dy / len);
@@ -621,17 +698,18 @@ function build3DHorse(horse) {
     scene.add(seg); m.tailSegs.push(seg);
   }
 
-  // 名牌（用马的随机名字）
+  // 名牌（显示双语名字：中文名 / English Name）
   horse.name = ap.name;
+  const displayName = getHorseDisplayName(ap.name);
   const nameCanvas = document.createElement("canvas");
-  nameCanvas.width = 256; nameCanvas.height = 32;
+  nameCanvas.width = 512; nameCanvas.height = 32;
   const nc = nameCanvas.getContext("2d");
   nc.fillStyle = horse.isPlayer ? "#ffdd44" : "#ffffff";
-  nc.font = "bold 16px monospace"; nc.textAlign = "center";
-  nc.fillText(ap.name, 128, 22);
+  nc.font = "bold 14px monospace"; nc.textAlign = "center";
+  nc.fillText(displayName, 256, 22);
   const nameTex = new THREE.CanvasTexture(nameCanvas);
   m.nameLabel = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.5, 0.2),
+    new THREE.PlaneGeometry(2.0, 0.2),
     new THREE.MeshBasicMaterial({ map: nameTex, transparent: true, depthTest: false })
   );
   m.nameLabel.renderOrder = 999;
@@ -753,7 +831,8 @@ function checkRace(dt) {
       const pos = Math.max(0, h.posX - START_X).toFixed(1);
       const color = h.isPlayer ? "#ffdd44" : "#fff";
       const marker = h.isPlayer ? " ⭐" : "";
-      return `<span style="color:${color}">${i + 1}. ${h.name}${marker} <small>${pos}m</small></span>`;
+      const displayName = getHorseDisplayName(h.appearance?.name || h.name);
+      return `<span style="color:${color}">${i + 1}. ${displayName}${marker} <small>${pos}m</small></span>`;
     }).join("<br>");
   }
 
@@ -766,11 +845,11 @@ function checkRace(dt) {
     if (gameMode === "race") {
       const rankings = [...horses].sort((a, b) => b.posX - a.posX);
       const rank = rankings.indexOf(playerHorse) + 1;
-      overlay.querySelector(".title").textContent = rank === 1 ? "冠军!" : `第 ${rank} 名`;
+      overlay.querySelector(".title").textContent = rank === 1 ? t("champion") : t("rankN", { n: rank });
       document.getElementById("tame-choices").style.display = "none";
       document.getElementById("race-choices").style.display = "flex";
     } else {
-      overlay.querySelector(".title").textContent = "驯服成功!";
+      overlay.querySelector(".title").textContent = t("tameSuccess");
       document.getElementById("tame-choices").style.display = "flex";
       document.getElementById("race-choices").style.display = "none";
     }
@@ -794,7 +873,7 @@ function resetRace() {
 function releaseAndNewHorse() {
   raceFinished = false;
   document.getElementById("finish-overlay").classList.remove("active");
-  info.textContent = "点击屏幕开始";
+  info.textContent = t("tapToStart");
 
   // 完整重建每匹马（删除旧的，创建新的）
   for (let i = 0; i < horses.length; i++) {
@@ -1039,90 +1118,91 @@ function updateHorseStats() {
     const massScale = (h.estimatedMass || 1) / 1.0;
     const strengthF = (g.legStrength / 100) * (g.muscleUse / 100);
     const baseLegLen = (0.35 + (g.legLength / 120) * 0.55) * (0.7 + (g.size / 100) * 0.3);
-    html += `<div class="horse-name">${h.name} ${h.isPlayer ? "⭐" : ""}</div>`;
+    const horseName = getHorseDisplayName(h.appearance?.name || h.name);
+    html += `<div class="horse-name">${horseName} ${h.isPlayer ? "⭐" : ""}</div>`;
 
     // 后腿
     html += `<div class="section">`;
-    html += section("后腿");
-    html += bar("倾角", g.legSkew||0, -10, 10, "#f80");
-    html += bar("灵活", g.legFlexibility, 20, 40, "#fa0");
-    html += bar("腿长系数", h.hindLegLenScale, 0.9, 1.1, "#fa0");
+    html += section(t("statHindLegs"));
+    html += bar(t("statTiltAngle"), g.legSkew||0, -10, 10, "#f80");
+    html += bar(t("statFlexibility"), g.legFlexibility, 20, 40, "#fa0");
+    html += bar(t("statLegLenFactor"), h.hindLegLenScale, 0.9, 1.1, "#fa0");
     html += `</div>`;
 
     // 前腿
     html += `<div class="section">`;
-    html += section("前腿");
-    html += bar("倾角", g.armSkew||0, -10, 10, "#08f");
-    html += bar("灵活", g.armFlexibility||g.legFlexibility, 20, 40, "#0af");
-    html += bar("腿长系数", h.foreLegLenScale, 0.9, 1.1, "#0af");
+    html += section(t("statForeLegs"));
+    html += bar(t("statTiltAngle"), g.armSkew||0, -10, 10, "#08f");
+    html += bar(t("statFlexibility"), g.armFlexibility||g.legFlexibility, 20, 40, "#0af");
+    html += bar(t("statLegLenFactor"), h.foreLegLenScale, 0.9, 1.1, "#0af");
     html += `</div>`;
 
     // 协调性
-    const eventNames = ["无", "触地", "到底", "到顶"];
-    const reactNames = ["无", "蹬", "抬", "反转"];
+    const eventNames = [t("eventNone"), t("eventGroundContact"), t("eventBottom"), t("eventTop")];
+    const reactNames = [t("reactNone"), t("reactPush"), t("reactLift"), t("reactReverse")];
     html += `<div class="section">`;
-    html += section("协调性");
-    html += tag("步态", g.locoSync, [
-      { val: 0, text: "交替步" },
-      { val: 1, text: "同步跳" },
+    html += section(t("statCoordination"));
+    html += tag(t("statGait"), g.locoSync, [
+      { val: 0, text: t("statAlternating") },
+      { val: 1, text: t("statSyncJump") },
     ]);
     const ftobE = eventNames[g.legFtobEvent||0];
     const ftobR = reactNames[g.legFtobReact||0];
     const btofE = eventNames[g.armBtofEvent||0];
     const btofR = reactNames[g.armBtofReact||0];
-    html += row("前→后", (ftobE === "无" || ftobR === "无") ? "无联动" : `前腿${ftobE}→${ftobR}后腿`);
-    html += row("后→前", (btofE === "无" || btofR === "无") ? "无联动" : `后腿${btofE}→${btofR}前腿`);
+    html += row(t("statFrontToBack"), (ftobE === t("eventNone") || ftobR === t("reactNone")) ? t("statNoCoupling") : t("couplingFrontToBack", { event: ftobE, react: ftobR }));
+    html += row(t("statBackToFront"), (btofE === t("eventNone") || btofR === t("reactNone")) ? t("statNoCoupling") : t("couplingBackToFront", { event: btofE, react: btofR }));
     html += `</div>`;
 
     // 体型
     html += `<div class="section">`;
-    html += section("体型");
-    html += bar("大小", g.size, 35, 100, "#c8c");
-    html += bar("长宽比", g.aspect, 150, 310, "#c8c");
-    html += bar("纤瘦", g.skinny, 75, 200, "#c8c");
-    html += bar("基础腿长", g.legLength, 50, 120, "#c8c");
+    html += section(t("statBodyType"));
+    html += bar(t("statSize"), g.size, 35, 100, "#c8c");
+    html += bar(t("statAspectRatio"), g.aspect, 150, 310, "#c8c");
+    html += bar(t("statSlimness"), g.skinny, 75, 200, "#c8c");
+    html += bar(t("statBaseLegLen"), g.legLength, 50, 120, "#c8c");
     html += `</div>`;
 
     // 控制
     html += `<div class="section">`;
-    html += section("控制");
-    html += tag("后蹬", g.legThrustBack, [
-      { val: 0, text: "无" },
-      { val: 1, text: "弱" },
-      { val: 2, text: "强" },
+    html += section(t("statControl"));
+    html += tag(t("statRearThrust"), g.legThrustBack, [
+      { val: 0, text: t("statNone") },
+      { val: 1, text: t("statWeak") },
+      { val: 2, text: t("statStrong") },
     ]);
-    html += bar("阻力", g.breakForce, 0, 50, "#f44");
-    html += tag("痉挛", g.brainSpastic, [
-      { val: 0, text: "无" },
-      { val: 1, text: "轻" },
-      { val: 2, text: "重" },
+    html += bar(t("statDrag"), g.breakForce, 0, 50, "#f44");
+    html += tag(t("statSpasm"), g.brainSpastic, [
+      { val: 0, text: t("statNone") },
+      { val: 1, text: t("statLight") },
+      { val: 2, text: t("statHeavy") },
     ]);
-    html += tag("头晕", g.narcolepsy, [
-      { val: 0, text: "无" },
-      { val: 1, text: "有" },
+    html += tag(t("statDizziness"), g.narcolepsy, [
+      { val: 0, text: t("statNone") },
+      { val: 1, text: t("statYes") },
     ]);
-    html += tag("弹跳", g.spinalLoco, [
-      { val: 0, text: "无" },
-      { val: 1, text: "弱" },
-      { val: 2, text: "强" },
+    html += tag(t("statBounce"), g.spinalLoco, [
+      { val: 0, text: t("statNone") },
+      { val: 1, text: t("statWeak") },
+      { val: 2, text: t("statStrong") },
     ]);
-    html += bar("颈灵活", g.neckFlexibility, 0, 40, "#8af");
+    html += bar(t("statNeckFlex"), g.neckFlexibility, 0, 40, "#8af");
     html += `</div>`;
 
     // 其他
     html += `<div class="section">`;
-    html += section("其他");
-    html += bar("耐力回复", h.staminaRegenRate, 0.3, 0.5, "#a4f");
+    html += section(t("statOther"));
+    html += bar(t("statStaminaRegen"), h.staminaRegenRate, 0.3, 0.5, "#a4f");
     html += `</div>`;
 
     if (h.isPlayer) {
       // 放生按钮（所有模式都有）
-      html += `<button class="save-btn" style="background:linear-gradient(135deg,#66aa66,#448844)" onclick="window._releaseHorse()">🌿 放生此马</button>`;
-      html += `<span class="saved-count" style="margin-bottom:4px">试试别的马</span>`;
+      html += `<button class="save-btn" style="background:linear-gradient(135deg,#66aa66,#448844)" onclick="window._releaseHorse()">🌿 ${t("sideRelease")}</button>`;
+      html += `<span class="saved-count" style="margin-bottom:4px">${t("sideReleaseDesc")}</span>`;
       // 开发模式保存按钮
       if (DEV_MODE) {
-        html += `<button class="save-btn" onclick="window._saveHorse()">💾 保存到马匹池 [DEV]</button>`;
-        html += `<span class="saved-count">池中 ${horsePool.length} 匹</span>`;
+        html += `<button class="save-btn" onclick="window._saveHorse()">💾 ${t("sideDevSave")}</button>`;
+        html += `<span class="saved-count">${t("sidePoolCount", { n: horsePool.length })}</span>`;
       }
     }
   }
@@ -1157,16 +1237,16 @@ window._saveHorse = async function() {
       body: JSON.stringify(horsePool, null, 2),
     });
     if (resp.ok) {
-      alert(`已保存到 horsePool.json！池中共 ${horsePool.length} 匹马`);
+      alert(t("saveSuccess", { n: horsePool.length }));
     } else {
-      alert("保存失败");
+      alert(t("saveFailed"));
     }
   } catch (e) {
-    alert("保存失败: " + e.message);
+    alert(t("saveFailedWith", { msg: e.message }));
   }
 };
 
 init().catch(err => {
-  console.error("初始化失败:", err);
-  document.getElementById("info").textContent = `错误: ${err.message}`;
+  console.error(t("initFailed"), err);
+  document.getElementById("info").textContent = t("errorMsg", { msg: err.message });
 });

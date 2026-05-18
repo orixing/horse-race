@@ -22,6 +22,7 @@
 
 import RAPIER from "@dimforge/rapier2d-compat";
 import * as THREE from "three";
+import { getHorseDisplayName, HORSE_NAMES_I18N } from "./i18n.js";
 export { RAPIER };
 
 // ══════════════════════════════════════════════════════════
@@ -102,13 +103,8 @@ export function fastGenome() {
   };
 }
 
-// ── 马匹名字池 ──
-const HORSE_NAMES = [
-  "烈焰", "疾风", "雷霆", "黑鬃", "星辰", "暴风", "闪电", "铁蹄",
-  "飞影", "狂奔", "银月", "赤兔", "追风", "破晓", "霜降", "野火",
-  "奔雷", "夜行", "金鞍", "旋风", "天马", "骄阳", "流星", "长风",
-  "白驹", "猎风", "狂沙", "霹雳", "龙驹", "烟雨", "踏雪", "凌云",
-];
+// ── 马匹名字池（中文名作为内部ID，显示时通过 i18n 获取双语名）──
+const HORSE_NAMES = HORSE_NAMES_I18N.map(n => n.zh);
 
 // ── 马匹配色方案 ──
 const BODY_COLORS = [
@@ -171,7 +167,8 @@ function randomAppearance() {
   // 鼻子色
   const noseColor = Math.random() > 0.5 ? 0x332211 : 0xffccaa;
 
-  return { bodyColor, legColor, hindLegColor, foreLegColor, maneColor, noseColor, riderColor, name, pattern, spotColor: spot2 };
+  const displayName = getHorseDisplayName(name);
+  return { bodyColor, legColor, hindLegColor, foreLegColor, maneColor, noseColor, riderColor, name, displayName, pattern, spotColor: spot2 };
 }
 
 export { randomAppearance, HORSE_NAMES };
