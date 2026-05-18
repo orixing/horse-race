@@ -115,22 +115,9 @@ export function build3DHorse(horse) {
     m.tailSegs.push(seg);
   }
 
-  // 名牌
+  // 名字（仅保存到对象上，不再在场景中显示名牌）
   horse.name = ap.name || "???";
-  let displayName = getHorseDisplayName(ap.names || ap.name) || horse.name;
-  const nameCanvas = document.createElement("canvas");
-  nameCanvas.width = 512; nameCanvas.height = 32;
-  const nc = nameCanvas.getContext("2d");
-  nc.fillStyle = horse.isPlayer ? "#ffdd44" : "#ffffff";
-  nc.font = "bold 14px monospace"; nc.textAlign = "center";
-  nc.fillText(displayName, 256, 22);
-  const nameTex = new THREE.CanvasTexture(nameCanvas);
-  m.nameLabel = new THREE.Mesh(
-    new THREE.PlaneGeometry(2.0, 0.2),
-    new THREE.MeshBasicMaterial({ map: nameTex, transparent: true, depthTest: false })
-  );
-  m.nameLabel.renderOrder = 999;
-  scene.add(m.nameLabel);
+  getHorseDisplayName(ap.names || ap.name) || horse.name;
 
   // ── 玩家指示器（箭头 + "你 赛道N"/"YOU Lane N"，仅多马模式）──
   if (horse.isPlayer && horse._showIndicator) {
@@ -264,7 +251,6 @@ export function syncHorseMeshes(horse) {
   apply(m.neck, st.neck);
   apply(m.head, st.head);
   st.tailSegs.forEach((s, i) => apply(m.tailSegs[i], s));
-  m.nameLabel.position.set(st.body.x, st.body.y + horse.bodyH / 2 + 0.5, z);
 
   // 玩家指示器动画
   if (m.playerIndicator) {
@@ -321,33 +307,8 @@ export function syncHorseMeshes(horse) {
   }
 }
 
-/**
- * 重建马匹名牌（语言切换时调用）
- */
-export function rebuildNameLabel(horse) {
-  const scene = sceneManager.scene;
-  if (!horse.meshes?.nameLabel) return;
-
-  scene.remove(horse.meshes.nameLabel);
-  horse.meshes.nameLabel.geometry.dispose();
-  horse.meshes.nameLabel.material.map?.dispose();
-  horse.meshes.nameLabel.material.dispose();
-
-  const displayName = getHorseDisplayName(horse.appearance.names || horse.appearance.name);
-  const nameCanvas = document.createElement("canvas");
-  nameCanvas.width = 512; nameCanvas.height = 32;
-  const nc = nameCanvas.getContext("2d");
-  nc.fillStyle = horse.isPlayer ? "#ffdd44" : "#ffffff";
-  nc.font = "bold 14px monospace"; nc.textAlign = "center";
-  nc.fillText(displayName, 256, 22);
-  const nameTex = new THREE.CanvasTexture(nameCanvas);
-  horse.meshes.nameLabel = new THREE.Mesh(
-    new THREE.PlaneGeometry(2.0, 0.2),
-    new THREE.MeshBasicMaterial({ map: nameTex, transparent: true, depthTest: false })
-  );
-  horse.meshes.nameLabel.renderOrder = 999;
-  scene.add(horse.meshes.nameLabel);
-}
+/** @deprecated 名牌已移除，保留空函数防止调用报错 */
+export function rebuildNameLabel() {}
 
 /**
  * 从场景中移除一匹马的所有3D对象

@@ -125,14 +125,19 @@ class HorseDataManager {
    * @param {boolean} isWin 是否冠军
    * @param {number} [rank] 名次
    */
-  addRaceResult(index, isWin, rank) {
+  /**
+   * @param {number} index 槽位索引
+   * @param {boolean} isWin 是否冠军
+   * @param {number} [time] 完赛时间（秒）
+   */
+  addRaceResult(index, isWin, time) {
     const stable = this.getStable();
     const data = stable[index];
     if (!data) return;
     data.raceCount = (data.raceCount || 0) + 1;
     if (isWin) data.winCount = (data.winCount || 0) + 1;
-    if (rank !== undefined && (data.bestRank === undefined || rank < data.bestRank)) {
-      data.bestRank = rank;
+    if (time !== undefined && time > 0 && (data.bestTime === undefined || time < data.bestTime)) {
+      data.bestTime = time;
     }
     this._saveStable(stable);
   }

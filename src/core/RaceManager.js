@@ -130,7 +130,8 @@ class RaceManager {
         if (activeSlot >= 0 && this.sim.playerHorse) {
           const sorted = [...this.sim.horses].sort((a, b) => b.posX - a.posX);
           const rank = sorted.indexOf(this.sim.playerHorse) + 1;
-          horseDataManager.addRaceResult(activeSlot, rank === 1, rank);
+          const time = this.sim.playerHorse.elapsed;
+          horseDataManager.addRaceResult(activeSlot, rank === 1, time);
         }
       }
       uiManager.showFinishOverlay(this.sim.gameMode, this.sim.horses, this.sim.playerHorse);
@@ -452,7 +453,7 @@ class RaceManager {
     if (activeSlot >= 0 && networkManager.sessionId) {
       const myResult = data.rankings.find(r => r.key === networkManager.sessionId);
       if (myResult && myResult.time >= 0) { // time < 0 是放弃，不算出战
-        horseDataManager.addRaceResult(activeSlot, myResult.rank === 1, myResult.rank);
+        horseDataManager.addRaceResult(activeSlot, myResult.rank === 1, myResult.time);
       }
     }
 
@@ -950,11 +951,11 @@ class RaceManager {
     }
 
     // 属性
-    const bestRankStr = data.bestRank !== undefined ? `#${data.bestRank}` : t("stableNoBest");
+    const bestTimeStr = data.bestTime !== undefined ? data.bestTime.toFixed(2) + "s" : t("stableNoBest");
     const stats = [
       { label: t("stableInfoRaces"), value: data.raceCount || 0 },
       { label: t("stableInfoWins"), value: data.winCount || 0 },
-      { label: t("stableInfoBest"), value: bestRankStr },
+      { label: t("stableInfoBest"), value: bestTimeStr },
     ];
     document.getElementById("detail-stats").innerHTML = stats.map(s => `
       <div class="detail-stat-row">

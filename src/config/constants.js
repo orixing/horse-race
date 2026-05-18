@@ -39,5 +39,5 @@ export const DEBUG_CONFIG = {
 // ── 模式相关参数（可变状态，由 RaceManager 管理）──
 export const MODE_SETTINGS = {
   tame: { laneCount: 1, finishX: 20 },
-  race: { laneCount: 5, finishX: 30 },
+  race: { laneCount: 5, finishX: 60 },
 };
