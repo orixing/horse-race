@@ -26,6 +26,16 @@ let _fpsFrames = 0;
 let _fpsTime = 0;
 let _fpsDisplay = 0;
 
+// ── 移动端适配：基于设计稿高度 2340 等比缩放 ──
+function setRemScale() {
+  const designH = 2340;
+  const remBase = (window.innerHeight / designH) * 100;
+  document.documentElement.style.fontSize = remBase + "px";
+}
+setRemScale();
+window.addEventListener("resize", setRemScale);
+window.addEventListener("orientationchange", setRemScale);
+
 async function init() {
   uiManager.showLoading();
 
