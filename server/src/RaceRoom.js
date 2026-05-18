@@ -50,6 +50,9 @@ export class RaceRoom extends Room {
     this._finishedSet = new Set();   // 已冲线的马匹索引
     this._rankings = [];             // 逐个记录冲线 { rank, key, time }
     this._playerOptions = new Map(); // sessionId → joinOptions（保存基因组等）
+    this._tickCount = 0;
+    this._tickRateTimer = 0;
+    this._tickRate = 0;
 
     // 注册消息处理
     this.onMessage("swipe", (client, data) => {
@@ -62,6 +65,10 @@ export class RaceRoom extends Room {
 
     this.onMessage("startGame", (client) => {
       this._onStartGame(client);
+    });
+
+    this.onMessage("ping", (client, data) => {
+      client.send("pong", { t: data.t });
     });
 
     // 物理模拟循环（60fps 固定步长）
@@ -333,6 +340,16 @@ export class RaceRoom extends Room {
 
   _tick(deltaMs) {
     const dt = deltaMs / 1000;
+
+    // tick 率统计
+    this._tickCount++;
+    this._tickRateTimer += dt;
+    if (this._tickRateTimer >= 1.0) {
+      this._tickRate = this._tickCount;
+      this._tickCount = 0;
+      this._tickRateTimer -= 1.0;
+      this.broadcast("tickRate", { rate: this._tickRate });
+    }
 
     // ── lobby 阶段不做物理 ──
     if (this.state.phase === "lobby") return;

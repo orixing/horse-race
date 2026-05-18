@@ -13,12 +13,18 @@ import uiManager from "./core/UIManager.js";
 import debugRenderer from "./core/DebugRenderer.js";
 import horseDataManager from "./core/HorseDataManager.js";
 import { syncHorseMeshes, rebuildNameLabel } from "./core/HorseRenderer.js";
+import networkManager from "./core/NetworkManager.js";
 
 // ── 服务器地址配置 ──
 const SERVER_URL = "ws://localhost:2567";
 
 // ── 主循环计时器 ──
 let timer;
+
+// ── FPS 计算 ──
+let _fpsFrames = 0;
+let _fpsTime = 0;
+let _fpsDisplay = 0;
 
 async function init() {
   uiManager.showLoading();
@@ -222,6 +228,27 @@ function animate() {
   // 调试画布（仅本地模式）
   if (!raceManager.isOnline) {
     debugRenderer.updateVisibility(raceManager.playerHorse);
+  }
+
+  // ── 性能统计（左上角）──
+  _fpsFrames++;
+  _fpsTime += dt;
+  if (_fpsTime >= 0.5) {
+    _fpsDisplay = Math.round(_fpsFrames / _fpsTime);
+    _fpsFrames = 0;
+    _fpsTime = 0;
+  }
+  const infoEl = document.getElementById("info");
+  if (!raceManager.inMenu) {
+    infoEl.style.display = "";
+    if (raceManager.isOnline) {
+      infoEl.textContent =
+        `FPS: ${_fpsDisplay}  |  ` +
+        `Server: ${networkManager.serverTickRate} tick/s  |  ` +
+        `Ping: ${networkManager.ping} ms`;
+    } else {
+      infoEl.textContent = `FPS: ${_fpsDisplay}`;
+    }
   }
 }
 

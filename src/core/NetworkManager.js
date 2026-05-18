@@ -23,6 +23,9 @@ class NetworkManager {
     this.room = null;
     this.connected = false;
     this.sessionId = null;
+    this.ping = 0;
+    this.serverTickRate = 0;
+    this._pingInterval = null;
 
     // 游戏房间回调
     this._onHorseAdd = null;
@@ -186,6 +189,21 @@ class NetworkManager {
       if (this._onRaceResult) this._onRaceResult(data);
     });
 
+    // ping/pong 延迟测量
+    room.onMessage("pong", (data) => {
+      this.ping = Date.now() - data.t;
+    });
+
+    // 服务端 tick 率
+    room.onMessage("tickRate", (data) => {
+      this.serverTickRate = data.rate;
+    });
+
+    // 定期发送 ping
+    this._pingInterval = setInterval(() => {
+      if (this.room) this.room.send("ping", { t: Date.now() });
+    }, 1000);
+
     // 服务端错误消息
     room.onMessage("error", (msg) => {
       console.warn("[Network] 服务端消息:", msg);
@@ -227,12 +245,18 @@ class NetworkManager {
 
   /** 断开游戏房间 */
   disconnect() {
+    if (this._pingInterval) {
+      clearInterval(this._pingInterval);
+      this._pingInterval = null;
+    }
     if (this.room) {
       this.room.leave();
       this.room = null;
     }
     this.connected = false;
     this.sessionId = null;
+    this.ping = 0;
+    this.serverTickRate = 0;
   }
 
   /** 断开一切 */

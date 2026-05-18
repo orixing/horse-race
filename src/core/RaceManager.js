@@ -17,6 +17,16 @@ import debugRenderer from "./DebugRenderer.js";
 import { START_X, LANE_WIDTH, MODE_SETTINGS } from "../config/constants.js";
 import { t, getLang, getHorseDisplayName } from "../i18n.js";
 
+/**
+ * 计算两个角度之间的最短差值（处理 -PI/PI 环绕）
+ */
+function _angleLerp(current, target) {
+  let diff = target - current;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  return diff;
+}
+
 class RaceManager {
   constructor() {
     /** @type {GameSimulation} 本地物理模拟层 */
@@ -417,17 +427,19 @@ class RaceManager {
   }
 
   /**
-   * 每帧同步服务端状态到3D渲染
+   * 每帧同步服务端状态到3D渲染（带 lerp 插值）
    */
   syncOnlineHorses() {
     if (!this._isOnline) return;
-    if (this._netPhase === "lobby") return; // 大厅阶段不渲染
+    if (this._netPhase === "lobby") return;
 
     // 更新倒计时数字
     if (this._netPhase === "countdown" && networkManager.room) {
       const cd = networkManager.room.state.countdown;
       this._updateCountdownNumber(cd);
     }
+
+    const LERP = 0.25; // 插值系数：越大越跟手，越小越平滑
 
     let playerPosX = START_X;
 
@@ -442,7 +454,8 @@ class RaceManager {
       if (ph.running) ph.elapsed += 1 / 60;
 
       if (ph.meshes) {
-        const st = {
+        // 从服务端读取目标值
+        const target = {
           body: { x: hs.body.x, y: hs.body.y, angle: hs.body.angle },
           hindLeg: { x: hs.hindLeg.x, y: hs.hindLeg.y, angle: hs.hindLeg.angle },
           foreLeg: { x: hs.foreLeg.x, y: hs.foreLeg.y, angle: hs.foreLeg.angle },
@@ -452,16 +465,40 @@ class RaceManager {
         };
         for (let i = 0; i < hs.tailSegs.length; i++) {
           const ts = hs.tailSegs[i];
-          st.tailSegs.push({ x: ts.x, y: ts.y, angle: ts.angle });
+          target.tailSegs.push({ x: ts.x, y: ts.y, angle: ts.angle });
         }
 
+        // 初始化或插值渲染状态
+        if (!ph._render) {
+          // 首帧：直接用服务端值
+          ph._render = JSON.parse(JSON.stringify(target));
+        } else {
+          // 后续帧：lerp 过渡
+          const r = ph._render;
+          const parts = ["body", "hindLeg", "foreLeg", "neck", "head"];
+          for (const p of parts) {
+            r[p].x += (target[p].x - r[p].x) * LERP;
+            r[p].y += (target[p].y - r[p].y) * LERP;
+            r[p].angle += _angleLerp(r[p].angle, target[p].angle) * LERP;
+          }
+          for (let i = 0; i < target.tailSegs.length; i++) {
+            if (!r.tailSegs[i]) {
+              r.tailSegs[i] = { ...target.tailSegs[i] };
+            } else {
+              r.tailSegs[i].x += (target.tailSegs[i].x - r.tailSegs[i].x) * LERP;
+              r.tailSegs[i].y += (target.tailSegs[i].y - r.tailSegs[i].y) * LERP;
+              r.tailSegs[i].angle += _angleLerp(r.tailSegs[i].angle, target.tailSegs[i].angle) * LERP;
+            }
+          }
+        }
+
+        const st = ph._render;
         ph.getBodyState = () => st;
         ph.getCollarWorldPos = () => {
-          const na = hs.neck.angle;
-          const np = { x: hs.neck.x, y: hs.neck.y };
+          const na = st.neck.angle;
           return {
-            x: np.x + Math.sin(na) * (-ph.neckLen / 2),
-            y: np.y - Math.cos(na) * (-ph.neckLen / 2),
+            x: st.neck.x + Math.sin(na) * (-ph.neckLen / 2),
+            y: st.neck.y - Math.cos(na) * (-ph.neckLen / 2),
           };
         };
 
