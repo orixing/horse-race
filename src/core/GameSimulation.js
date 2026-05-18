@@ -28,7 +28,6 @@ export class GameSimulation {
    * @param {"tame"|"race"} mode
    * @param {object} [options]
    * @param {object} [options.savedHorseData] 玩家保存的马匹数据
-   * @param {function} [options.generateHorseData] 生成马匹数据的函数
    */
   initRace(mode, options = {}) {
     this.cleanup();
@@ -57,19 +56,18 @@ export class GameSimulation {
       this.worlds.push(horseWorld);
 
       // 决定基因组
-      let genome, poolData;
+      let genome, savedData;
       if (mode === "race" && cfg.isPlayer && options.savedHorseData) {
         genome = options.savedHorseData.genome || randomGenome();
-        poolData = options.savedHorseData;
+        savedData = options.savedHorseData;
       } else {
-        const gen = options.generateHorseData ? options.generateHorseData() : null;
-        poolData = gen;
-        genome = poolData ? poolData.genome : randomGenome();
+        genome = randomGenome();
+        savedData = null;
       }
 
       // 创建马匹
       const horse = new RagdollHorse(horseWorld, genome, START_X);
-      if (poolData) horse.importData(poolData);
+      if (savedData) horse.importData(savedData);
       horse.horseWorld = horseWorld;
       horse.lane = cfg.lane;
       horse.isPlayer = cfg.isPlayer || false;
@@ -127,10 +125,9 @@ export class GameSimulation {
   /**
    * 替换一匹马（放生+新马）
    * @param {number} index 马匹索引
-   * @param {object} [poolData] 可选的预设数据
    * @returns {RagdollHorse} 新马匹
    */
-  replaceHorse(index, poolData = null) {
+  replaceHorse(index) {
     const oldHorse = this.horses[index];
     const configs = this.gameMode === "race" ? RACE_CONFIGS : TAME_CONFIGS;
     const cfg = configs[index];
@@ -139,9 +136,8 @@ export class GameSimulation {
     this._removeHorseBodies(oldHorse);
 
     // 创建新马
-    const genome = poolData ? poolData.genome : randomGenome();
+    const genome = randomGenome();
     const newHorse = new RagdollHorse(oldHorse.horseWorld, genome, START_X);
-    if (poolData) newHorse.importData(poolData);
     newHorse.horseWorld = oldHorse.horseWorld;
     newHorse.lane = oldHorse.lane;
     newHorse.isPlayer = cfg.isPlayer || false;

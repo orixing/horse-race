@@ -3,7 +3,6 @@
  */
 
 import { t, getLang, getHorseDisplayName } from "../i18n.js";
-import horseDataManager from "./HorseDataManager.js";
 
 class UIManager {
   /**
@@ -36,7 +35,9 @@ class UIManager {
     document.getElementById("main-menu").classList.remove("hidden");
     document.getElementById("rankings").innerHTML = "";
     document.getElementById("rankings").style.display = "none";
-    document.getElementById("horse-stats").style.display = "";
+    const panel = document.getElementById("stats-panel");
+    panel.classList.remove("visible", "open");
+    document.getElementById("release-horse-bar").classList.remove("active");
   }
 
   /**
@@ -50,18 +51,23 @@ class UIManager {
    * 设置赛马模式UI
    */
   setRaceModeUI() {
-    document.getElementById("horse-stats").style.display = "none";
+    const panel = document.getElementById("stats-panel");
+    panel.classList.remove("visible", "open");
     document.getElementById("rankings").style.display = "block";
     document.getElementById("info").style.display = "none";
+    document.getElementById("release-horse-bar").classList.remove("active");
   }
 
   /**
    * 设置驯服模式UI
    */
   setTameModeUI() {
-    document.getElementById("horse-stats").style.display = "";
+    const panel = document.getElementById("stats-panel");
+    panel.classList.add("visible");
+    panel.classList.remove("open"); // 默认收起
     document.getElementById("rankings").style.display = "none";
     document.getElementById("info").style.display = "none";
+    document.getElementById("release-horse-bar").classList.add("active");
   }
 
   /**
@@ -85,6 +91,8 @@ class UIManager {
    * 显示终点覆盖层
    */
   showFinishOverlay(gameMode, horses, playerHorse) {
+    document.getElementById("release-horse-bar").classList.remove("active");
+    document.getElementById("stats-panel").classList.remove("open");
     const overlay = document.getElementById("finish-overlay");
     overlay.classList.add("active");
 
@@ -232,14 +240,7 @@ class UIManager {
       html += bar(t("statStaminaRegen"), h.staminaRegenRate, 0.3, 0.5, "#a4f");
       html += `</div>`;
 
-      if (h.isPlayer) {
-        html += `<button class="save-btn" style="background:linear-gradient(135deg,#66aa66,#448844)" onclick="window._releaseHorse()">🌿 ${t("sideRelease")}</button>`;
-        html += `<span class="saved-count" style="margin-bottom:4px">${t("sideReleaseDesc")}</span>`;
-        if (horseDataManager.isDevMode) {
-          html += `<button class="save-btn" onclick="window._saveHorse()">💾 ${t("sideDevSave")}</button>`;
-          html += `<span class="saved-count">${t("sidePoolCount", { n: horseDataManager.poolSize })}</span>`;
-        }
-      }
+
     }
 
     if (div._lastHtml !== html) {

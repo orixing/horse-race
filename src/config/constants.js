@@ -36,9 +36,6 @@ export const DEBUG_CONFIG = {
   debugOffsetY: 155,
 };
 
-// ── 开发模式 ──
-export const DEV_MODE = true;
-
 // ── 模式相关参数（可变状态，由 RaceManager 管理）──
 export const MODE_SETTINGS = {
   tame: { laneCount: 1, finishX: 20 },

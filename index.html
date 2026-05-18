@@ -82,11 +82,36 @@
       line-height: 1.6;
     }
 
+    #stats-panel {
+      position: fixed; top: 80px; right: 0;
+      z-index: 10;
+      display: flex; align-items: flex-start;
+      transform: translateX(calc(100% + 28px));
+      transition: transform 0.3s ease;
+      pointer-events: none;
+    }
+    #stats-panel.visible { transform: translateX(220px); pointer-events: auto; }
+    #stats-panel.visible.open { transform: translateX(0); }
+    #stats-toggle {
+      flex-shrink: 0;
+      width: 28px; height: 48px;
+      background: rgba(0,0,0,0.6);
+      color: #ccc; font-size: 14px;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-right: none;
+      border-radius: 8px 0 0 8px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      backdrop-filter: blur(4px);
+      transition: background 0.15s, color 0.15s;
+      pointer-events: auto;
+    }
+    #stats-toggle:hover { background: rgba(0,0,0,0.8); color: #fff; }
+    #stats-panel.open #stats-toggle { transform: scaleX(-1); }
     #horse-stats {
-      position: fixed; top: 80px; right: 10px;
       color: #fff; font: 12px sans-serif;
       background: rgba(0,0,0,0.7); padding: 12px 14px;
-      border-radius: 8px; z-index: 10;
+      border-radius: 8px 0 0 8px;
       max-height: 75vh; overflow-y: auto;
       width: 220px;
       backdrop-filter: blur(4px);
@@ -122,26 +147,34 @@
     #horse-stats .horse-name {
       font-size: 14px; font-weight: bold; margin-bottom: 6px;
     }
-    #horse-stats .save-btn {
-      display: block; width: 100%; margin-top: 8px;
-      padding: 6px 0; text-align: center;
-      background: linear-gradient(135deg, #ffdd44, #ffaa22);
-      color: #333; border: none; border-radius: 6px;
-      font: bold 12px sans-serif;
-      cursor: pointer; pointer-events: auto;
-    }
-    #horse-stats .save-btn:hover { filter: brightness(1.1); }
-    #horse-stats .saved-count {
-      display: block; text-align: center;
-      color: #888; font-size: 10px; margin-top: 4px; margin-bottom: 4px;
-    }
-
     #debug-canvas {
       position: fixed; bottom: 10px; left: 10px;
       border: 1px solid rgba(255,255,255,0.3);
       border-radius: 4px;
       background: rgba(0,0,0,0.7);
       z-index: 10;
+    }
+
+    #release-horse-bar {
+      display: none;
+      position: fixed; bottom: 62px; left: 50%; transform: translateX(-50%);
+      flex-direction: column; align-items: center; gap: 2px;
+      z-index: 10;
+    }
+    #release-horse-bar.active { display: flex; }
+    #btn-release-inline {
+      padding: 6px 20px;
+      font: bold 13px sans-serif; color: #fff;
+      background: linear-gradient(135deg, #66aa66, #448844);
+      border: none; border-radius: 8px;
+      cursor: pointer;
+      pointer-events: auto;
+      transition: transform 0.12s, filter 0.12s;
+    }
+    #btn-release-inline:hover { filter: brightness(1.15); transform: scale(1.04); }
+    #btn-release-inline:active { transform: scale(0.96); }
+    #release-desc {
+      font-size: 10px; color: rgba(255,255,255,0.5);
     }
 
     #stamina-bar {
@@ -240,6 +273,27 @@
     }
     #online-lobby .lobby-btn:hover { transform: translateY(-2px); }
     #online-lobby .lobby-btn:active { transform: translateY(0) scale(0.97); }
+    .lobby-name-row {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 16px;
+    }
+    .lobby-name-label {
+      font-size: 1rem; color: rgba(255,255,255,0.7);
+    }
+    .lobby-name-input {
+      padding: 8px 14px;
+      font-size: 1rem;
+      color: #fff;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 8px;
+      outline: none;
+      width: 180px;
+    }
+    .lobby-name-input:focus {
+      border-color: rgba(100,150,255,0.6);
+      background: rgba(255,255,255,0.15);
+    }
     .btn-create-room {
       background: linear-gradient(135deg, #6633ff, #3366ff);
       box-shadow: 0 3px 12px rgba(50,80,255,0.4);
@@ -518,6 +572,10 @@
   <!-- 联机大厅 -->
   <div id="online-lobby">
     <div class="lobby-title" data-i18n="lobbyTitle">联机大厅</div>
+    <div class="lobby-name-row">
+      <label for="player-name-input" class="lobby-name-label" data-i18n="playerName">昵称</label>
+      <input type="text" id="player-name-input" class="lobby-name-input" maxlength="12">
+    </div>
     <div class="lobby-actions">
       <button class="lobby-btn btn-create-room" id="btn-create-room" data-i18n="btnCreateRoom">创建房间</button>
       <button class="lobby-btn btn-refresh-rooms" id="btn-refresh-rooms" data-i18n="btnRefresh">刷新</button>
@@ -542,9 +600,17 @@
   <!-- 游戏 -->
   <div id="info" data-i18n="loading">加载中...</div>
   <div id="rankings" style="display:none"></div>
-  <div id="horse-stats"></div>
+  <div id="stats-panel">
+    <button id="stats-toggle" onclick="this.parentElement.classList.toggle('open')">&#9664;</button>
+    <div id="horse-stats"></div>
+  </div>
   <canvas id="canvas3d"></canvas>
   <canvas id="debug-canvas" width="300" height="180"></canvas>
+
+  <div id="release-horse-bar">
+    <button id="btn-release-inline" onclick="window._releaseHorse()">🌿 <span data-i18n="sideRelease">放生此马</span></button>
+    <span id="release-desc" data-i18n="sideReleaseDesc">试试别的马</span>
+  </div>
 
   <div id="stamina-bar">
     <span data-i18n="stamina">耐力</span>

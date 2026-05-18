@@ -79,7 +79,6 @@ class RaceManager {
 
     this.sim.initRace(mode, {
       savedHorseData: mode === "race" ? horseDataManager.loadSavedHorse() : null,
-      generateHorseData: () => horseDataManager.generateHorseData(),
     });
 
     raceTrack.build(this.sim.laneCount, this.sim.finishX);
@@ -148,8 +147,7 @@ class RaceManager {
 
     for (let i = 0; i < this.sim.horses.length; i++) {
       removeHorseMeshes(this.sim.horses[i]);
-      const poolData = horseDataManager.generateHorseData();
-      const newHorse = this.sim.replaceHorse(i, poolData);
+      const newHorse = this.sim.replaceHorse(i);
       newHorse.meshes = build3DHorse(newHorse);
     }
 
@@ -204,7 +202,8 @@ class RaceManager {
   async createRoom() {
     const saved = horseDataManager.loadSavedHorse();
     const roomName = this._randomRoomName();
-    const options = { roomName };
+    const playerName = this._getPlayerName();
+    const options = { roomName, playerName };
     if (saved) {
       options.genome = saved.genome;
       options.horseData = saved;
@@ -257,7 +256,8 @@ class RaceManager {
    */
   async joinRoom(roomId) {
     const saved = horseDataManager.loadSavedHorse();
-    const options = {};
+    const playerName = this._getPlayerName();
+    const options = { playerName };
     if (saved) {
       options.genome = saved.genome;
       options.horseData = saved;
@@ -542,20 +542,56 @@ class RaceManager {
   //  UI 辅助方法
   // ════════════════════════════════════════════════════════════
 
+  _getPlayerName() {
+    const input = document.getElementById("player-name-input");
+    const name = (input?.value || "").trim();
+    if (name) localStorage.setItem("playerName", name);
+    return name || localStorage.getItem("playerName") || this._generateRandomName();
+  }
+
+  _generateRandomName() {
+    const isEn = getLang() === "en";
+    if (isEn) {
+      const adj = ["Happy", "Swift", "Wild", "Brave", "Lucky", "Cool", "Dizzy", "Sneaky", "Jolly", "Turbo"];
+      const noun = ["Rider", "Jockey", "Cowboy", "Dash", "Racer", "Scout", "Ace", "Fox", "Bolt", "Star"];
+      return adj[Math.floor(Math.random() * adj.length)] + noun[Math.floor(Math.random() * noun.length)];
+    } else {
+      const adj = ["快乐", "飞驰", "狂野", "勇敢", "幸运", "酷酷", "无敌", "神秘", "闪电", "旋风"];
+      const noun = ["骑手", "牛仔", "赛手", "侠客", "少年", "大王", "小将", "飞侠", "达人", "选手"];
+      return adj[Math.floor(Math.random() * adj.length)] + noun[Math.floor(Math.random() * noun.length)];
+    }
+  }
+
   _showLobbyUI() {
     const el = document.getElementById("online-lobby");
     el.classList.add("active");
-    // 刷新大厅界面的本地化文本
+    // 恢复保存的名字，没有则生成随机名
+    const input = document.getElementById("player-name-input");
+    const saved = localStorage.getItem("playerName") || "";
+    if (input && !input.value) {
+      input.value = saved || this._generateRandomName();
+      localStorage.setItem("playerName", input.value);
+    }
+    // 输入时实时保存
+    if (input && !input._boundSave) {
+      input.addEventListener("input", () => {
+        const v = input.value.trim();
+        if (v) localStorage.setItem("playerName", v);
+      });
+      input._boundSave = true;
+    }
+    // 刷新本地化文本
     this._refreshLobbyTexts();
   }
 
   _refreshLobbyTexts() {
     const lobby = document.getElementById("online-lobby");
     lobby.querySelector(".lobby-title").textContent = t("lobbyTitle");
+    lobby.querySelector(".lobby-name-label").textContent = t("playerName");
+    document.getElementById("player-name-input").placeholder = t("playerNamePlaceholder");
     document.getElementById("btn-create-room").textContent = t("btnCreateRoom");
     document.getElementById("btn-refresh-rooms").textContent = t("btnRefresh");
     document.getElementById("btn-back-lobby").textContent = t("btnBackMenu");
-    // 如果房间列表为空，刷新空提示
     const empty = lobby.querySelector(".room-empty");
     if (empty) empty.textContent = t("noRooms");
   }

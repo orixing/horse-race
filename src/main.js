@@ -181,10 +181,6 @@ async function init() {
     raceManager.releaseAndNewHorse();
   };
 
-  window._saveHorse = async () => {
-    await horseDataManager.saveToPool(raceManager.playerHorse);
-  };
-
   // 启动主循环
   requestAnimationFrame(animate);
 }

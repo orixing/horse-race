@@ -89,17 +89,13 @@ const translations = {
     // 侧边面板按钮
     sideRelease: "放生此马",
     sideReleaseDesc: "试试别的马",
-    sideDevSave: "保存到马匹池 [DEV]",
-    sidePoolCount: "池中 {n} 匹",
-    // 保存提示
-    saveSuccess: "已保存到 horsePool.json！池中共 {n} 匹马",
-    saveFailed: "保存失败",
-    saveFailedWith: "保存失败: {msg}",
     // 错误
     initFailed: "初始化失败:",
     errorMsg: "错误: {msg}",
     // 联机大厅
     lobbyTitle: "联机大厅",
+    playerName: "昵称",
+    playerNamePlaceholder: "输入昵称...",
     btnCreateRoom: "创建房间",
     btnRefresh: "刷新",
     btnBackMenu: "返回主界面",
@@ -209,17 +205,13 @@ const translations = {
     // 侧边面板按钮
     sideRelease: "Release This Horse",
     sideReleaseDesc: "Try a different horse",
-    sideDevSave: "Save to Pool [DEV]",
-    sidePoolCount: "{n} in pool",
-    // 保存提示
-    saveSuccess: "Saved to horsePool.json! Total {n} horses in pool",
-    saveFailed: "Save Failed",
-    saveFailedWith: "Save Failed: {msg}",
     // 错误
     initFailed: "Init Failed:",
     errorMsg: "Error: {msg}",
     // 联机大厅
     lobbyTitle: "Online Lobby",
+    playerName: "Name",
+    playerNamePlaceholder: "Enter name...",
     btnCreateRoom: "Create Room",
     btnRefresh: "Refresh",
     btnBackMenu: "Back to Menu",
