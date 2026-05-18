@@ -191,40 +191,19 @@ const translations = {
   },
 };
 
-// 马匹名字中英文对照
-export const HORSE_NAMES_I18N = [
-  { zh: "烈焰", en: "Blaze" },
-  { zh: "疾风", en: "Gale" },
-  { zh: "雷霆", en: "Thunder" },
-  { zh: "黑鬃", en: "Black Mane" },
-  { zh: "星辰", en: "Starlight" },
-  { zh: "暴风", en: "Storm" },
-  { zh: "闪电", en: "Lightning" },
-  { zh: "铁蹄", en: "Iron Hoof" },
-  { zh: "飞影", en: "Shadow" },
-  { zh: "狂奔", en: "Gallop" },
-  { zh: "银月", en: "Silver Moon" },
-  { zh: "赤兔", en: "Red Hare" },
-  { zh: "追风", en: "Wind Chaser" },
-  { zh: "破晓", en: "Dawn" },
-  { zh: "霜降", en: "Frost" },
-  { zh: "野火", en: "Wildfire" },
-  { zh: "奔雷", en: "Rolling Thunder" },
-  { zh: "夜行", en: "Night Walker" },
-  { zh: "金鞍", en: "Golden Saddle" },
-  { zh: "旋风", en: "Whirlwind" },
-  { zh: "天马", en: "Pegasus" },
-  { zh: "骄阳", en: "Blazing Sun" },
-  { zh: "流星", en: "Meteor" },
-  { zh: "长风", en: "Long Wind" },
-  { zh: "白驹", en: "White Colt" },
-  { zh: "猎风", en: "Wind Hunter" },
-  { zh: "狂沙", en: "Wild Sand" },
-  { zh: "霹雳", en: "Thunderbolt" },
-  { zh: "龙驹", en: "Dragon Colt" },
-  { zh: "烟雨", en: "Misty Rain" },
-  { zh: "踏雪", en: "Snow Treader" },
-  { zh: "凌云", en: "Cloud Soarer" },
+// 马匹名字池 — 中英文各自独立，不一一对应
+export const HORSE_NAMES_ZH = [
+  "烈焰", "疾风", "雷霆", "黑鬃", "星辰", "暴风", "闪电", "铁蹄",
+  "飞影", "狂奔", "银月", "赤兔", "追风", "破晓", "霜降", "野火",
+  "奔雷", "夜行", "金鞍", "旋风", "天马", "骄阳", "流星", "长风",
+  "白驹", "猎风", "狂沙", "霹雳", "龙驹", "烟雨", "踏雪", "凌云",
+];
+
+export const HORSE_NAMES_EN = [
+  "Biscuit", "Wobbles", "Noodle", "Turbo", "Chaos", "Pickles", "Bandit", "Nugget",
+  "Bumble", "Socks", "Dizzy", "Mustard", "Clumsy", "Pepper", "Muffin", "Rascal",
+  "Tater", "Zigzag", "Spud", "Gizmo", "Waffles", "Boots", "Pretzel", "Jinx",
+  "Pudding", "Scooter", "Maple", "Tumble", "Crumbs", "Dash", "Bongo", "Sprout",
 ];
 
 let currentLang = localStorage.getItem("gameLang") || "zh";
@@ -260,24 +239,32 @@ export function onLangChange(cb) {
 }
 
 /**
- * 获取马匹的显示名字
- * @param {string} zhName 中文名
- * @returns {string} 当前语言的显示名
+ * 随机取一个马匹名字（返回 { zh, en } 双语名）
+ * 中英文从各自独立的名字池中随机抽取，不对应
  */
-export function getHorseName(zhName) {
-  const entry = HORSE_NAMES_I18N.find(n => n.zh === zhName);
-  if (!entry) return zhName;
-  if (currentLang === "en") return entry.en;
-  return entry.zh;
+export function randomHorseNames() {
+  const zh = HORSE_NAMES_ZH[Math.floor(Math.random() * HORSE_NAMES_ZH.length)];
+  const en = HORSE_NAMES_EN[Math.floor(Math.random() * HORSE_NAMES_EN.length)];
+  return { zh, en };
 }
 
 /**
- * 获取马匹的双语显示名字 (用于名牌等)
- * @param {string} zhName 中文名
- * @returns {string} "中文名 / English Name" 或单语名
+ * 获取马匹的当前语言显示名字
+ * @param {{ zh: string, en: string } | string} names 双语名对象，或旧版纯中文名字符串
+ * @returns {string} 当前语言的显示名
  */
-export function getHorseDisplayName(zhName) {
-  const entry = HORSE_NAMES_I18N.find(n => n.zh === zhName);
-  if (!entry) return zhName;
-  return `${entry.zh} / ${entry.en}`;
+export function getHorseName(names) {
+  if (typeof names === "string") return names; // 兼容旧数据
+  return currentLang === "en" ? names.en : names.zh;
+}
+
+/**
+ * 获取马匹的显示名字（根据当前语言）
+ * @param {{ zh: string, en: string } | string} names 双语名对象，或旧版纯字符串
+ * @returns {string} 当前语言对应的名字
+ */
+export function getHorseDisplayName(names) {
+  if (!names) return "???";
+  if (typeof names === "string") return names;
+  return currentLang === "en" ? names.en : names.zh;
 }

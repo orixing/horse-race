@@ -22,7 +22,7 @@
 
 import RAPIER from "@dimforge/rapier2d-compat";
 import * as THREE from "three";
-import { getHorseDisplayName, HORSE_NAMES_I18N } from "./i18n.js";
+import { randomHorseNames, HORSE_NAMES_ZH } from "./i18n.js";
 export { RAPIER };
 
 // ══════════════════════════════════════════════════════════
@@ -103,8 +103,8 @@ export function fastGenome() {
   };
 }
 
-// ── 马匹名字池（中文名作为内部ID，显示时通过 i18n 获取双语名）──
-const HORSE_NAMES = HORSE_NAMES_I18N.map(n => n.zh);
+// ── 马匹名字池（保留中文数组用于兼容导出）──
+const HORSE_NAMES = HORSE_NAMES_ZH;
 
 // ── 马匹配色方案 ──
 const BODY_COLORS = [
@@ -124,7 +124,8 @@ function randomAppearance() {
   const pattern = PATTERN_TYPES[Math.floor(Math.random() * PATTERN_TYPES.length)];
   const riderColors = [0xff3333, 0x3366ff, 0x33cc33, 0xffcc00, 0xff66cc, 0x9933ff, 0xff8800, 0x00cccc];
   const riderColor = riderColors[Math.floor(Math.random() * riderColors.length)];
-  const name = HORSE_NAMES[Math.floor(Math.random() * HORSE_NAMES.length)];
+  const names = randomHorseNames(); // { zh, en } 独立随机
+  const name = names.zh; // 内部存储用中文名（兼容保存）
 
   // 斑点第二色（用于 split 和 spots 花纹）
   const spot2 = BODY_COLORS[Math.floor(Math.random() * BODY_COLORS.length)];
@@ -167,8 +168,7 @@ function randomAppearance() {
   // 鼻子色
   const noseColor = Math.random() > 0.5 ? 0x332211 : 0xffccaa;
 
-  const displayName = getHorseDisplayName(name);
-  return { bodyColor, legColor, hindLegColor, foreLegColor, maneColor, noseColor, riderColor, name, displayName, pattern, spotColor: spot2 };
+  return { bodyColor, legColor, hindLegColor, foreLegColor, maneColor, noseColor, riderColor, name, names, pattern, spotColor: spot2 };
 }
 
 export { randomAppearance, HORSE_NAMES };
@@ -977,7 +977,16 @@ export class RagdollHorse {
     if (data.hindLegLenScale !== undefined) this.hindLegLenScale = data.hindLegLenScale;
     if (data.foreLegLenScale !== undefined) this.foreLegLenScale = data.foreLegLenScale;
     if (data.staminaRegenRate !== undefined) this.staminaRegenRate = data.staminaRegenRate;
-    if (data.appearance) this.appearance = { ...data.appearance };
+    if (data.appearance) {
+      const currentNames = this.appearance.names;
+      const currentName = this.appearance.name;
+      this.appearance = { ...data.appearance };
+      if (!this.appearance.name) this.appearance.name = currentName;
+      // 旧数据没有 names 双语对象时，自动补一个
+      if (!this.appearance.names) {
+        this.appearance.names = currentNames || randomHorseNames();
+      }
+    }
     this._recalcParams();
   }
 }
